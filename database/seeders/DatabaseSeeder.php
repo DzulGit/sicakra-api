@@ -2,24 +2,20 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
+     *
+     * Project ini tidak punya tabel `users` bawaan Laravel — user dipecah
+     * jadi `admin` dan `pelanggan`. Satu-satunya akun yang wajib ada dari
+     * seeder adalah Super Admin, dibuat lewat SuperAdminSeeder (baca kredensial
+     * dari .env: SUPER_ADMIN_EMAIL & SUPER_ADMIN_PASSWORD).
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $this->call(SuperAdminSeeder::class);
     }
 }

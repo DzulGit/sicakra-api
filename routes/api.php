@@ -96,30 +96,25 @@ Route::prefix('admin')->group(function () {
 
 // ===== PELANGGAN =====
 Route::prefix('pelanggan')->group(function () {
-    Route::post('login-pertama', [AuthPelangganController::class, 'loginPertama'])
-        ->middleware('throttle:login-pertama');
-
     Route::post('login', [AuthPelangganController::class, 'login'])
         ->middleware('throttle:login');
 
     Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan'])->group(function () {
-        Route::post('buat-password', [AuthPelangganController::class, 'buatPassword']);
+        Route::post('logout', [AuthPelangganController::class, 'logout']);
 
-        Route::middleware('pastikan.password')->group(function () {
-            Route::post('logout', [AuthPelangganController::class, 'logout']);
+        Route::get('profil', [ProfilController::class, 'show']);
+        Route::patch('profil', [ProfilController::class, 'update']);
+        Route::patch('profil/username', [ProfilController::class, 'ubahUsername']);
+        Route::patch('profil/password', [ProfilController::class, 'ubahPassword']);
 
-            Route::get('profil', [ProfilController::class, 'show']);
-            Route::patch('profil', [ProfilController::class, 'update']);
+        Route::get('layanan', [LayananSayaController::class, 'index']);
+        Route::get('layanan/{layanan}', [LayananSayaController::class, 'show']);
 
-            Route::get('layanan', [LayananSayaController::class, 'index']);
-            Route::get('layanan/{layanan}', [LayananSayaController::class, 'show']);
+        Route::get('tagihan', [TagihanSayaController::class, 'index']);
+        Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
 
-            Route::get('tagihan', [TagihanSayaController::class, 'index']);
-            Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
-
-            Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
-            Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);
-            Route::post('laporan-kendala', [LaporanKendalaSayaController::class, 'store']);
-        });
+        Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
+        Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);
+        Route::post('laporan-kendala', [LaporanKendalaSayaController::class, 'store']);
     });
 });

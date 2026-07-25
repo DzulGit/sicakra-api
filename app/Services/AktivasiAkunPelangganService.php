@@ -27,14 +27,14 @@ class AktivasiAkunPelangganService
             'PLG'
         );
 
-        // Password default = nomor_pelanggan, di-hash otomatis lewat cast
-        // 'password' => 'hashed' di model Pelanggan (JANGAN Hash::make() manual
-        // di sini, nanti ke-hash dua kali dan login akan selalu gagal).
-        // Ditaruh di sini (bukan di model event) karena nomor_pelanggan baru
-        // benar-benar ada di titik ini, bukan saat Pelanggan::create() awal
-        // di PendaftaranService.
+        // Password & username default = nomor_pelanggan. Password di-hash
+        // otomatis lewat cast 'password' => 'hashed' di model Pelanggan
+        // (JANGAN Hash::make() manual di sini, nanti ke-hash dua kali dan
+        // login akan selalu gagal). Username boleh diubah sendiri nanti oleh
+        // pelanggan lewat halaman Profil; ini cuma nilai awal.
         $pelanggan->update([
             'nomor_pelanggan' => $nomorPelanggan,
+            'username' => $nomorPelanggan,
             'password' => $nomorPelanggan,
         ]);
 
