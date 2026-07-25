@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Teknisi;
 
 use App\Enums\HasilKerjaEnum;
+use App\Filters\JadwalKerjaFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PermohonanLayanan\HasilKerjaRequest;
 use App\Models\JadwalKerja;
@@ -17,10 +18,10 @@ class JadwalKerjaController extends Controller
         private readonly JadwalKerjaService $jadwalKerjaService,
     ) {}
 
-    public function index(Request $request)
+    public function index(Request $request, JadwalKerjaFilter $filter)
     {
         return response()->json([
-            'data' => $this->jadwalKerjaRepository->paginateMilikTeknisiBelumSelesai($request->user()->id),
+            'data' => $this->jadwalKerjaRepository->paginateMilikTeknisi($request->user()->id, $filter),
         ]);
     }
 
