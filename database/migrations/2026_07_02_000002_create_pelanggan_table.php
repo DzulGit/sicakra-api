@@ -12,6 +12,7 @@ return new class extends Migration
             $table->id();
             // Nullable: baru diisi saat layanan pertama pelanggan resmi AKTIF
             $table->string('nomor_pelanggan')->unique()->nullable();
+            $table->string('username')->unique()->nullable()->after('nomor_pelanggan');
             $table->string('nama_lengkap');
             $table->string('nik', 16)->unique();
             $table->string('nomor_hp')->unique();

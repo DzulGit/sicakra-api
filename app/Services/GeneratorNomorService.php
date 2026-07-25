@@ -25,7 +25,7 @@ class GeneratorNomorService
 
             $urutan = $terakhir
                 ? ((int) substr($terakhir->{$kolom}, strlen($prefix))) + 1
-                : 1;
+                : 0;
 
             return $prefix.str_pad((string) $urutan, 6, '0', STR_PAD_LEFT);
         });
