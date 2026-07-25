@@ -44,10 +44,16 @@ Route::prefix('admin')->group(function () {
             Route::patch('laporan-kendala/{laporanKendala}/teruskan-ke-teknisi', [OperasionalLaporanKendalaController::class, 'teruskanKeTeknisi']);
             Route::patch('laporan-kendala/{laporanKendala}/tutup', [OperasionalLaporanKendalaController::class, 'tutup']);
 
-            Route::get('tim-teknisi', [TimTeknisiController::class, 'listAktif']);
-
             Route::get('teknisi', [PermohonanLayananController::class, 'daftarTeknisi']);
-            // Rute CRUD Paket Internet menyusul.
+
+            Route::get('pelanggan', [\App\Http\Controllers\Api\Operasional\PelangganController::class, 'index']);
+            Route::get('pelanggan/{pelanggan}', [\App\Http\Controllers\Api\Operasional\PelangganController::class, 'show']);
+
+            Route::get('tim-teknisi', [TimTeknisiController::class, 'index']);
+            Route::get('tim-teknisi/aktif', [TimTeknisiController::class, 'listAktif']);
+            Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
+            Route::post('tim-teknisi', [TimTeknisiController::class, 'store']);
+            Route::patch('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'update']);
         });
 
         // ----- Teknisi -----
@@ -76,10 +82,6 @@ Route::prefix('admin')->group(function () {
             Route::patch('admin/{admin}', [AdminController::class, 'update']);
             Route::patch('admin/{admin}/nonaktifkan', [AdminController::class, 'nonaktifkan']);
 
-            Route::get('tim-teknisi', [TimTeknisiController::class, 'index']);
-            Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
-            Route::post('tim-teknisi', [TimTeknisiController::class, 'store']);
-            Route::patch('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'update']);
         });
     });
 });
