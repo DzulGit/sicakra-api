@@ -4,23 +4,25 @@ use App\Http\Controllers\Api\Auth\AuthAdminController;
 use App\Http\Controllers\Api\Auth\AuthPelangganController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController as OperasionalLaporanKendalaController;
+use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
+use App\Http\Controllers\Api\Operasional\PelangganController;
 use App\Http\Controllers\Api\Operasional\PermohonanLayananController;
 use App\Http\Controllers\Api\Pelanggan\LaporanKendalaSayaController;
 use App\Http\Controllers\Api\Pelanggan\LayananSayaController;
 use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
+use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
-use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
+use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
 use App\Http\Controllers\Api\Teknisi\LaporanKendalaController as TeknisiLaporanKendalaController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\Publik\PaketInternetController;
 
 // ===== PUBLIK (tanpa login) =====
 Route::post('pendaftaran', [PendaftaranController::class, 'store'])
     ->middleware('throttle:pendaftaran');
-Route::get('paket-internet', [PaketInternetController::class, 'index']);
+Route::get('paket-internet', [PublikPaketInternetController::class, 'index']);
 
 // ===== ADMIN =====
 Route::prefix('admin')->group(function () {
@@ -46,14 +48,20 @@ Route::prefix('admin')->group(function () {
 
             Route::get('teknisi', [PermohonanLayananController::class, 'daftarTeknisi']);
 
-            Route::get('pelanggan', [\App\Http\Controllers\Api\Operasional\PelangganController::class, 'index']);
-            Route::get('pelanggan/{pelanggan}', [\App\Http\Controllers\Api\Operasional\PelangganController::class, 'show']);
+            Route::get('pelanggan', [PelangganController::class, 'index']);
+            Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
 
             Route::get('tim-teknisi', [TimTeknisiController::class, 'index']);
             Route::get('tim-teknisi/aktif', [TimTeknisiController::class, 'listAktif']);
             Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
             Route::post('tim-teknisi', [TimTeknisiController::class, 'store']);
             Route::patch('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'update']);
+
+            Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index']);
+            Route::get('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'show']);
+            Route::post('paket-internet', [OperasionalPaketInternetController::class, 'store']);
+            Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
+            Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
         });
 
         // ----- Teknisi -----
