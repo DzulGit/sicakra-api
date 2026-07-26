@@ -97,7 +97,7 @@ class PendaftaranTest extends TestCase
         $response->assertStatus(422)->assertJsonValidationErrors('nik');
     }
 
-    public function test_pendaftaran_gagal_tanpa_foto_ktp(): void
+    public function test_pendaftaran_berhasil_tanpa_foto_selfie(): void
     {
         Storage::fake('s3');
 
@@ -105,6 +105,31 @@ class PendaftaranTest extends TestCase
             'nama_lengkap' => 'Budi Santoso',
             'nik' => '1111222233334444',
             'nomor_hp' => '081111222233',
+            'email' => 'budi@example.com',
+            'alamat_pemasangan' => 'Jl. Merdeka No. 1',
+            'rt' => '001',
+            'rw' => '002',
+            'kode_pos' => '50000',
+            'latitude' => -6.2,
+            'longitude' => 106.8,
+            'tipe_paket' => 'custom',
+            'nama_paket_custom' => 'Custom',
+            'kecepatan_custom_mbps' => 50,
+            'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('pelanggan', ['nik' => '1111222233334444', 'foto_selfie_ktp' => null]);
+    }
+
+    public function test_pendaftaran_gagal_tanpa_foto_ktp(): void
+    {
+        Storage::fake('s3');
+
+        $response = $this->postJson('/api/pendaftaran', [
+            'nama_lengkap' => 'Budi Santoso',
+            'nik' => '9999888877776666',
+            'nomor_hp' => '089999999999',
             'alamat_pemasangan' => 'Jl. Merdeka No. 1',
             'rt' => '001',
             'rw' => '002',

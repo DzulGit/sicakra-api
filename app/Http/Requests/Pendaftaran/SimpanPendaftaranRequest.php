@@ -33,7 +33,7 @@ class SimpanPendaftaranRequest extends FormRequest
             'catatan_custom' => ['nullable', 'string'],
 
             'foto_ktp' => ['required', 'image', 'max:2048'],
-            'foto_selfie_ktp' => ['required', 'image', 'max:2048'],
+            'foto_selfie_ktp' => ['nullable', 'image', 'max:2048'],
         ];
     }
 }

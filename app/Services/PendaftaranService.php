@@ -25,7 +25,7 @@ class PendaftaranService
     {
         return DB::transaction(function () use ($data) {
             $pathKtp = $this->simpanFoto($data['foto_ktp'], 'ktp');
-            $pathSelfie = $this->simpanFoto($data['foto_selfie_ktp'], 'selfie-ktp');
+            $pathSelfie = isset($data['foto_selfie_ktp']) ? $this->simpanFoto($data['foto_selfie_ktp'], 'selfie-ktp') : null;
 
             $pelanggan = Pelanggan::create([
                 'nama_lengkap' => $data['nama_lengkap'],
