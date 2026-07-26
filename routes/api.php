@@ -38,6 +38,7 @@ Route::prefix('admin')->group(function () {
             Route::get('permohonan-layanan/{permohonan}', [PermohonanLayananController::class, 'show']);
             Route::post('permohonan-layanan', [PermohonanLayananController::class, 'store']);
             Route::patch('permohonan-layanan/{permohonan}/verifikasi', [PermohonanLayananController::class, 'verifikasi']);
+            Route::post('permohonan-layanan/{permohonan}/verifikasi-dan-jadwalkan', [PermohonanLayananController::class, 'verifikasiDanJadwalkan']);
             Route::post('permohonan-layanan/{permohonan}/jadwalkan-kerja', [PermohonanLayananController::class, 'jadwalkanKerja']);
 
             Route::get('laporan-kendala', [OperasionalLaporanKendalaController::class, 'index']);
