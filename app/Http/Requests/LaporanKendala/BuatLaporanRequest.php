@@ -22,6 +22,7 @@ class BuatLaporanRequest extends FormRequest
             ],
             'kategori_kendala' => ['required', 'string', 'max:255'],
             'deskripsi' => ['required', 'string'],
+            'foto' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ];
     }
 }

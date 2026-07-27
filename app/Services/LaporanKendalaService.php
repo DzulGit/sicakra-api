@@ -8,6 +8,7 @@ use App\Models\Admin;
 use App\Models\LaporanKendala;
 use App\Models\Pelanggan;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
 class LaporanKendalaService
@@ -22,6 +23,15 @@ class LaporanKendalaService
         return DB::transaction(function () use ($data) {
             $data['nomor_laporan'] = $this->generatorNomor->generate(LaporanKendala::class, 'nomor_laporan', 'LPR');
             $data['status'] = StatusLaporanEnum::MENUNGGU;
+
+            // Foto opsional — hanya diproses kalau pelanggan benar-benar
+            // mengunggah file. Disimpan sebagai path string di kolom `foto`,
+            // mengikuti pola foto_ktp/foto_selfie_ktp di PendaftaranService.
+            if (isset($data['foto']) && $data['foto'] instanceof UploadedFile) {
+                $data['foto'] = $data['foto']->store('laporan-kendala', 's3');
+            } else {
+                unset($data['foto']);
+            }
 
             return $this->laporanKendalaRepository->create($data);
         });
