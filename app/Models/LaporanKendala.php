@@ -18,6 +18,7 @@ class LaporanKendala extends Model
         'layanan_internet_id',
         'kategori_kendala',
         'deskripsi',
+        'foto',
         'status',
         'ditugaskan_ke',
         'hasil_penanganan',

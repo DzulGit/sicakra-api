@@ -8,6 +8,7 @@ use App\Models\Admin;
 use App\Models\LaporanKendala;
 use App\Models\Pelanggan;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
 class LaporanKendalaService
@@ -22,6 +23,10 @@ class LaporanKendalaService
         return DB::transaction(function () use ($data) {
             $data['nomor_laporan'] = $this->generatorNomor->generate(LaporanKendala::class, 'nomor_laporan', 'LPR');
             $data['status'] = StatusLaporanEnum::MENUNGGU;
+
+            if (isset($data['foto'])) {
+                $data['foto'] = $data['foto']->store('laporan-kendala', 's3');
+            }
 
             return $this->laporanKendalaRepository->create($data);
         });

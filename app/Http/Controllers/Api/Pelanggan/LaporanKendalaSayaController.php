@@ -36,10 +36,18 @@ class LaporanKendalaSayaController extends Controller
     }
 
     public function store(BuatLaporanRequest $request)
-    {
+    {            
         $this->authorize('create', LaporanKendala::class);
 
-        $laporan = $this->laporanKendalaService->buat($request->validated(), $request->user());
+        $data = $request->validated();
+
+        // validated() tidak otomatis menyertakan file upload — ambil
+        // eksplisit lewat file() kalau pelanggan memang mengunggah foto.
+        if ($request->hasFile('foto')) {
+            $data['foto'] = $request->file('foto');
+        }
+
+        $laporan = $this->laporanKendalaService->buat($data, $request->user());
 
         return response()->json(['data' => $laporan], 201);
     }
