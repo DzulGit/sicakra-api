@@ -16,6 +16,7 @@ class PaketInternet extends Model
         'nama_paket',
         'kecepatan_mbps',
         'harga',
+        'jumlah_perangkat',
         'deskripsi',
         'status_aktif',
     ];

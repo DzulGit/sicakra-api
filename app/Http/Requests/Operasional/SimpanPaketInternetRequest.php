@@ -17,6 +17,7 @@ class SimpanPaketInternetRequest extends FormRequest
             'nama_paket' => ['required', 'string', 'max:255'],
             'kecepatan_mbps' => ['required', 'integer', 'min:1'],
             'harga' => ['required', 'numeric', 'min:0'],
+            'jumlah_perangkat' => ['sometimes', 'integer', 'min:1', 'max:255'],
             'deskripsi' => ['nullable', 'string'],
             'status_aktif' => ['sometimes', 'boolean'],
         ];

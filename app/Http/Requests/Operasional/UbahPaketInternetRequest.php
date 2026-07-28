@@ -17,6 +17,7 @@ class UbahPaketInternetRequest extends FormRequest
             'nama_paket' => ['sometimes', 'string', 'max:255'],
             'kecepatan_mbps' => ['sometimes', 'integer', 'min:1'],
             'harga' => ['sometimes', 'numeric', 'min:0'],
+            'jumlah_perangkat' => ['sometimes', 'integer', 'min:1', 'max:255'],
             'deskripsi' => ['nullable', 'string'],
             'status_aktif' => ['sometimes', 'boolean'],
         ];
