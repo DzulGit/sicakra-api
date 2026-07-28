@@ -34,6 +34,7 @@ Route::prefix('admin')->group(function () {
 
         // ----- Operasional -----
         Route::middleware('peran:operasional,super_admin')->prefix('operasional')->group(function () {
+            Route::get('dashboard', [\App\Http\Controllers\Api\Operasional\DashboardController::class, 'index']);
             Route::get('permohonan-layanan', [PermohonanLayananController::class, 'index']);
             Route::get('permohonan-layanan/{permohonan}', [PermohonanLayananController::class, 'show']);
             Route::post('permohonan-layanan', [PermohonanLayananController::class, 'store']);
