@@ -59,15 +59,34 @@ class PermohonanLayananController extends Controller
 
         $data = $request->validated();
 
-        if ($data['jenis_permohonan'] === JenisPermohonanEnum::RELOKASI->value) {
-            $layananLama = LayananInternet::findOrFail($data['layanan_internet_id']);
+        $jenis = $data['jenis_permohonan'];
 
-            // Relokasi mewarisi paket dari layanan lama — bukan pilih paket baru
+        // Relokasi: mewarisi paket dari layanan lama
+        if ($jenis === JenisPermohonanEnum::RELOKASI->value) {
+            $layananLama = LayananInternet::findOrFail($data['layanan_internet_id']);
             $data['tipe_paket'] = $layananLama->tipe_paket->value;
             $data['paket_internet_id'] = $layananLama->paket_internet_id;
             $data['nama_paket_custom'] = $layananLama->nama_paket_custom;
             $data['kecepatan_custom_mbps'] = $layananLama->kecepatan_custom_mbps;
             $data['harga_custom'] = $layananLama->harga_custom;
+        }
+
+        // Ganti paket: simpan data layanan lama sebagai referensi
+        if ($jenis === JenisPermohonanEnum::GANTI_PAKET->value) {
+            $layananLama = LayananInternet::with('paketInternet')->findOrFail($data['layanan_internet_id']);
+            // Pindahkan paket baru (dari frontend) ke paket_internet_id_baru
+            $data['paket_internet_id_baru'] = $data['paket_internet_id'] ?? null;
+            // Simpan data layanan lama sebagai referensi
+            $data['tipe_paket'] = $layananLama->tipe_paket->value;
+            $data['paket_internet_id'] = $layananLama->paket_internet_id;
+            $data['nama_paket_custom'] = $layananLama->nama_paket_custom;
+            $data['kecepatan_custom_mbps'] = $layananLama->kecepatan_custom_mbps;
+            $data['harga_custom'] = $layananLama->harga_custom;
+        }
+
+        // Tambah paket: pelanggan pilih paket untuk layanan tambahan
+        if ($jenis === JenisPermohonanEnum::TAMBAH_PAKET->value) {
+            $data['tipe_paket'] = 'reguler';
         }
 
         $permohonan = $this->permohonanLayananService->buatPermohonan($data);

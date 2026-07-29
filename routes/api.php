@@ -7,8 +7,10 @@ use App\Http\Controllers\Api\Operasional\LaporanKendalaController as Operasional
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
 use App\Http\Controllers\Api\Operasional\PelangganController;
 use App\Http\Controllers\Api\Operasional\PermohonanLayananController;
+use App\Http\Controllers\Api\Pelanggan\DashboardPelangganController;
 use App\Http\Controllers\Api\Pelanggan\LaporanKendalaSayaController;
 use App\Http\Controllers\Api\Pelanggan\LayananSayaController;
+use App\Http\Controllers\Api\Pelanggan\PermohonanSayaController;
 use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
@@ -99,10 +101,13 @@ Route::prefix('admin')->group(function () {
 // ===== PELANGGAN =====
 Route::prefix('pelanggan')->group(function () {
     Route::post('login', [AuthPelangganController::class, 'login'])
+        ->name('login')
         ->middleware('throttle:login');
 
     Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan'])->group(function () {
         Route::post('logout', [AuthPelangganController::class, 'logout']);
+
+        Route::get('dashboard/ringkasan', [DashboardPelangganController::class, 'ringkasan']);
 
         Route::get('profil', [ProfilController::class, 'show']);
         Route::patch('profil', [ProfilController::class, 'update']);
@@ -118,5 +123,7 @@ Route::prefix('pelanggan')->group(function () {
         Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
         Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);
         Route::post('laporan-kendala', [LaporanKendalaSayaController::class, 'store']);
+
+        Route::post('permohonan-layanan', [PermohonanSayaController::class, 'store']);
     });
 });
