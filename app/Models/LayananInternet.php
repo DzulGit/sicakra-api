@@ -25,6 +25,7 @@ class LayananInternet extends Model
         'kecepatan_custom_mbps',
         'harga_custom',
         'alamat_pemasangan',
+        'detail_alamat',
         'rt',
         'rw',
         'kode_pos',

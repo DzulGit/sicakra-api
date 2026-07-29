@@ -28,10 +28,10 @@ class PermohonanLayanan extends Model
         'kecepatan_custom_mbps',
         'harga_custom',
         'catatan_custom',
+        'alasan',
         'alamat_pemasangan',
-        'rt',
-        'rw',
-        'kode_pos',
+        'detail_alamat',
+        'paket_internet_id_baru',
         'latitude',
         'longitude',
         'status',
@@ -64,10 +64,16 @@ class PermohonanLayanan extends Model
         return $this->belongsTo(Admin::class, 'diproses_oleh');
     }
 
-    // Hanya terisi jika jenis_permohonan = relokasi
+    // Hanya terisi jika jenis_permohonan = relokasi / ganti_paket
     public function layananDirelokasi(): BelongsTo
     {
         return $this->belongsTo(LayananInternet::class, 'layanan_internet_id');
+    }
+
+    // Paket baru yang diminta (hanya untuk ganti_paket)
+    public function paketInternetBaru(): BelongsTo
+    {
+        return $this->belongsTo(PaketInternet::class, 'paket_internet_id_baru');
     }
 
     // Hanya terisi jika jenis_permohonan = pemasangan_baru & sudah DIKONVERSI
