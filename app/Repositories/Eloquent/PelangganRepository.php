@@ -16,7 +16,7 @@ class PelangganRepository implements PelangganRepositoryInterface
 
     public function paginate(PelangganFilter $filter, int $perPage = 20): LengthAwarePaginator
     {
-        $query = Pelanggan::query()->latest();
+        $query = Pelanggan::query()->with('layananInternet.paketInternet')->latest();
         return $filter->apply($query)->paginate($perPage);
     }
 }

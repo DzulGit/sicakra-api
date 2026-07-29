@@ -48,9 +48,7 @@ class PendaftaranService
                 // Operasional saat negosiasi paket custom.
                 'catatan_custom' => $data['catatan_custom'] ?? null,
                 'alamat_pemasangan' => $data['alamat_pemasangan'],
-                'rt' => $data['rt'],
-                'rw' => $data['rw'],
-                'kode_pos' => $data['kode_pos'],
+                'detail_alamat' => $data['detail_alamat'] ?? null,
                 'latitude' => $data['latitude'],
                 'longitude' => $data['longitude'],
             ]);

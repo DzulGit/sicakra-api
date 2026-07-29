@@ -6,10 +6,15 @@ use Illuminate\Database\Eloquent\Builder;
 
 class PermohonanLayananFilter extends QueryFilter
 {
-    // ?status=DITERIMA
+    // ?status=DITERIMA atau ?status=DITERIMA,DIJADWALKAN
     protected function status(Builder $builder, string $nilai): void
     {
-        $builder->where('status', $nilai);
+        $statuses = array_filter(explode(',', $nilai));
+        if (count($statuses) > 1) {
+            $builder->whereIn('status', $statuses);
+        } else {
+            $builder->where('status', $nilai);
+        }
     }
 
     // ?jenis_permohonan=relokasi

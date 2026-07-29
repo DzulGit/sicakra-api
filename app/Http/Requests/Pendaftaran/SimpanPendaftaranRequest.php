@@ -20,9 +20,7 @@ class SimpanPendaftaranRequest extends FormRequest
             'email' => ['nullable', 'email'],
 
             'alamat_pemasangan' => ['required', 'string'],
-            'rt' => ['required', 'string', 'max:3'],
-            'rw' => ['required', 'string', 'max:3'],
-            'kode_pos' => ['required', 'string', 'max:5'],
+            'detail_alamat' => ['nullable', 'string'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
 

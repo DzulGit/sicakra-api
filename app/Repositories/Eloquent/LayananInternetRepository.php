@@ -29,6 +29,7 @@ class LayananInternetRepository implements LayananInternetRepositoryInterface
     {
         return LayananInternet::where('pelanggan_id', $pelangganId)
             ->with('paketInternet')
+            ->withCount('perangkat')
             ->latest()
             ->paginate($perPage);
     }

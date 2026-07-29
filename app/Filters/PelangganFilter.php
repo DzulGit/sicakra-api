@@ -15,4 +15,11 @@ class PelangganFilter extends QueryFilter
               ->orWhere('nomor_hp', 'like', "%{$nilai}%");
         });
     }
+
+    protected function jenis(Builder $builder, string $nilai): void
+    {
+        if ($nilai === 'aktif') {
+            $builder->whereNotNull('nomor_pelanggan');
+        }
+    }
 }
