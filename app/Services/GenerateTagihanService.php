@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\TipePaketEnum;
+use App\Events\TagihanDibuat;
 use App\Models\LayananInternet;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
@@ -23,7 +24,7 @@ class GenerateTagihanService
      * Idempotent: kalau tagihan periode itu sudah ada, tidak dibuat dobel
      * (dijaga juga oleh unique constraint DB sebagai lapisan pengaman terakhir).
      */
-    public function generateUntukLayanan(LayananInternet $layanan, int $periodeBulan, int $periodeTahun): ?Tagihan
+    public function generateUntukLayanan(LayananInternet $layanan, int $periodeBulan, int $periodeTahun, int $jumlahBulan = 1): ?Tagihan
     {
         if ($layanan->status !== StatusLayananEnum::AKTIF) {
             return null;
@@ -38,12 +39,12 @@ class GenerateTagihanService
             return null;
         }
 
-        return DB::transaction(function () use ($layanan, $periodeBulan, $periodeTahun) {
+        return DB::transaction(function () use ($layanan, $periodeBulan, $periodeTahun, $jumlahBulan) {
             [$namaPaket, $kecepatan, $harga] = $this->snapshotPaket($layanan);
 
             $nomorTagihan = $this->generatorNomor->generate(Tagihan::class, 'nomor_tagihan', 'INV');
 
-            return $this->tagihanRepository->create([
+            $tagihan = $this->tagihanRepository->create([
                 'nomor_tagihan' => $nomorTagihan,
                 'layanan_internet_id' => $layanan->id,
                 'periode_bulan' => $periodeBulan,
@@ -51,10 +52,15 @@ class GenerateTagihanService
                 'nama_paket_snapshot' => $namaPaket,
                 'kecepatan_snapshot_mbps' => $kecepatan,
                 'harga_snapshot' => $harga,
-                'total_tagihan' => $harga,
+                'total_tagihan' => $harga * $jumlahBulan,
+                'jumlah_bulan' => $jumlahBulan,
                 'tanggal_jatuh_tempo' => $this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun),
                 'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
             ]);
+
+            TagihanDibuat::dispatch($tagihan);
+
+            return $tagihan;
         });
     }
 

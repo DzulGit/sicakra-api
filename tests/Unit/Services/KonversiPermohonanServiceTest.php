@@ -7,19 +7,29 @@ use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPermohonanEnum;
 use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
+use App\Models\Tagihan;
 use App\Services\KonversiPermohonanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class KonversiPermohonanServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Faktikan event supaya listener queued (BuatInvoiceXendit) tidak
+        // benar-benar memanggil API Xendit selama test.
+        Event::fake();
+    }
+
     public function test_konversi_pemasangan_baru_membuat_layanan_internet_baru(): void
     {
         $permohonan = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'status' => StatusPermohonanEnum::PEMASANGAN,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
         ]);
 
         $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
@@ -37,7 +47,7 @@ class KonversiPermohonanServiceTest extends TestCase
     {
         $permohonan = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'status' => StatusPermohonanEnum::PEMASANGAN,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
         ]);
         $permohonan->pelanggan()->update(['nomor_pelanggan' => null]);
 
@@ -48,11 +58,29 @@ class KonversiPermohonanServiceTest extends TestCase
         $this->assertStringStartsWith('PLG', $permohonan->pelanggan->nomor_pelanggan);
     }
 
+    public function test_konversi_pemasangan_baru_langsung_generate_tagihan_bulan_ini(): void
+    {
+        $permohonan = PermohonanLayanan::factory()->create([
+            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
+        ]);
+
+        $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
+
+        $this->assertEquals(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
+
+        $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->first();
+        $this->assertEquals(now()->month, $tagihan->periode_bulan);
+        $this->assertEquals(now()->year, $tagihan->periode_tahun);
+        $this->assertEquals($layanan->paketInternet->harga, $tagihan->harga_snapshot);
+        $this->assertEquals($layanan->paketInternet->harga, $tagihan->total_tagihan);
+    }
+
     public function test_konversi_pemasangan_baru_tidak_generate_ulang_nomor_pelanggan_jika_sudah_ada(): void
     {
         $permohonan = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'status' => StatusPermohonanEnum::PEMASANGAN,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
         ]);
         $permohonan->pelanggan()->update(['nomor_pelanggan' => 'PLG000777']);
 
@@ -71,7 +99,7 @@ class KonversiPermohonanServiceTest extends TestCase
         $permohonanRelokasi = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::RELOKASI,
             'layanan_internet_id' => $layananLama->id,
-            'status' => StatusPermohonanEnum::PEMASANGAN,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
             'alamat_pemasangan' => 'Alamat Baru No. 99',
         ]);
 

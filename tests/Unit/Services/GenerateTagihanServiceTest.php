@@ -7,11 +7,18 @@ use App\Models\LayananInternet;
 use App\Models\Tagihan;
 use App\Services\GenerateTagihanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class GenerateTagihanServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Event::fake();
+    }
 
     public function test_generate_tagihan_berhasil_untuk_layanan_aktif(): void
     {

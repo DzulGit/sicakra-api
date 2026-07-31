@@ -21,6 +21,7 @@ class KonversiPermohonanService
         private readonly GeneratorNomorService $generatorNomor,
         private readonly PermohonanLayananService $permohonanLayananService,
         private readonly AktivasiAkunPelangganService $aktivasiAkunPelangganService,
+        private readonly GenerateTagihanService $generateTagihanService,
     ) {}
 
     public function konversi(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
@@ -48,6 +49,16 @@ class KonversiPermohonanService
     {
         $layanan = $this->buatLayananDariPermohonan($permohonan);
         $this->aktivasiAkunPelangganService->aktivasiJikaLayananPertama($permohonan->pelanggan);
+
+        // Tagihan bulan pertama langsung dibuat saat instalasi selesai, supaya
+        // pelanggan langsung lihat tagihan di dashboard-nya. Idempotent — kalau
+        // tagihan periode bulan ini sudah ada, tidak dibuat dobel.
+        $this->generateTagihanService->generateUntukLayanan(
+            $layanan,
+            now()->month,
+            now()->year,
+        );
+
         return $layanan;
     }
 
