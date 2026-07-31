@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'xendit' => [
+        'secret_key' => env('XENDIT_SECRET_KEY'),
+        'webhook_verification_token' => env('XENDIT_WEBHOOK_VERIFICATION_TOKEN'),
+        'mode' => env('XENDIT_MODE', 'test'),
+        'invoice_duration' => 259200,
+    ],
 ];

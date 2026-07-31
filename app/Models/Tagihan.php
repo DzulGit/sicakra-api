@@ -23,10 +23,14 @@ class Tagihan extends Model
         'kecepatan_snapshot_mbps',
         'harga_snapshot',
         'total_tagihan',
+        'jumlah_bulan',
         'tanggal_jatuh_tempo',
         'status_pembayaran',
         'xendit_invoice_id',
         'xendit_invoice_url',
+        'xendit_invoice_status',
+        'xendit_invoice_expires_at',
+        'xendit_invoice_retry_count',
         'dibayar_pada',
     ];
 
@@ -34,6 +38,7 @@ class Tagihan extends Model
         'status_pembayaran' => StatusPembayaranEnum::class,
         'tanggal_jatuh_tempo' => 'date',
         'dibayar_pada' => 'datetime',
+        'xendit_invoice_expires_at' => 'datetime',
         'harga_snapshot' => 'decimal:2',
         'total_tagihan' => 'decimal:2',
     ];

@@ -7,4 +7,5 @@ enum StatusPembayaranEnum: string
 {
     case BELUM_BAYAR = 'belum_bayar';
     case SUDAH_BAYAR = 'sudah_bayar';
+    case KEDALUWARSA = 'kedaluwarsa';
 }

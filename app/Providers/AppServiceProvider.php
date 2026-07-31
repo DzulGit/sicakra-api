@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Http\Request;
 
@@ -69,5 +70,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('pendaftaran', function (Request $request) {
             return Limit::perMinute(3)->by($request->ip());
         });
+
+        Event::listen(
+            \App\Events\TagihanDibuat::class,
+            \App\Listeners\BuatInvoiceXendit::class,
+        );
     }
 }
