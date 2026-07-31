@@ -29,7 +29,7 @@ class KonversiPermohonanService
             $layanan = match ($permohonan->jenis_permohonan) {
                 JenisPermohonanEnum::PEMASANGAN_BARU => $this->konversiPemasanganBaru($permohonan),
                 JenisPermohonanEnum::TAMBAH_PAKET => $this->konversiTambahPaket($permohonan),
-                JenisPermohonanEnum::GANTI_PAKET => $this->konversiGantiPaket($permohonan),
+                JenisPermohonanEnum::GANTI_PAKET => $this->konversiGantiPaket($permohonan, $diprosesOleh),
                 JenisPermohonanEnum::RELOKASI => $this->konversiRelokasi($permohonan),
             };
 
@@ -56,31 +56,46 @@ class KonversiPermohonanService
         return $this->buatLayananDariPermohonan($permohonan);
     }
 
-    private function konversiGantiPaket(PermohonanLayanan $permohonan): LayananInternet
+    private function konversiGantiPaket(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
     {
         $layanan = $permohonan->layananDirelokasi;
-        $paketBaru = $permohonan->paketInternetBaru;
+        
+        // Ambil paket baru dari paketInternetBaru (jika diset) atau fallback ke paketInternet
+        $paketBaru = $permohonan->paketInternetBaru ?? $permohonan->paketInternet;
 
         RiwayatPerubahanPaket::create([
             'layanan_internet_id' => $layanan->id,
-            'nama_paket_lama' => $layanan->paket_internet?->nama_paket ?? $layanan->nama_paket_custom ?? '-',
-            'kecepatan_lama_mbps' => $layanan->kecepatan_custom_mbps,
-            'harga_lama' => $layanan->harga_custom,
-            'nama_paket_baru' => $paketBaru?->nama_paket ?? '-',
-            'kecepatan_baru_mbps' => $paketBaru?->kecepatan_mbps ?? $permohonan->kecepatan_custom_mbps,
-            'harga_baru' => $paketBaru?->harga ?? $permohonan->harga_custom,
+            'nama_paket_lama' => $layanan->paketInternet?->nama_paket ?? $layanan->nama_paket_custom ?? '-',
+            'kecepatan_lama_mbps' => $layanan->paketInternet?->kecepatan_mbps ?? $layanan->kecepatan_custom_mbps ?? 0,
+            'harga_lama' => $layanan->paketInternet?->harga ?? $layanan->harga_custom ?? 0,
+            'nama_paket_baru' => $paketBaru?->nama_paket ?? $permohonan->nama_paket_custom ?? '-',
+            'kecepatan_baru_mbps' => $paketBaru?->kecepatan_mbps ?? $permohonan->kecepatan_custom_mbps ?? 0,
+            'harga_baru' => $paketBaru?->harga ?? $permohonan->harga_custom ?? 0,
             'jenis_perubahan' => $this->tentukanJenisPerubahan($layanan, $permohonan),
-            'diubah_oleh' => null,
+            'diubah_oleh' => $diprosesOleh?->id,
             'tanggal_perubahan' => now()->toDateString(),
         ]);
 
         return $this->layananInternetRepository->update($layanan, [
-            'paket_internet_id' => $permohonan->paket_internet_id_baru ?? $layanan->paket_internet_id,
-            'tipe_paket' => 'reguler',
-            'nama_paket_custom' => null,
-            'kecepatan_custom_mbps' => $paketBaru?->kecepatan_mbps,
-            'harga_custom' => $paketBaru?->harga,
+            'paket_internet_id' => $paketBaru?->id ?? null,
+            'tipe_paket' => $paketBaru ? 'reguler' : 'custom',
+            'nama_paket_custom' => $paketBaru ? null : $permohonan->nama_paket_custom,
+            'kecepatan_custom_mbps' => $paketBaru ? null : $permohonan->kecepatan_custom_mbps,
+            'harga_custom' => $paketBaru ? null : $permohonan->harga_custom,
         ]);
+    }
+
+    private function tentukanJenisPerubahan(LayananInternet $layananLama, PermohonanLayanan $permohonan): string
+    {
+        $hargaLama = (float) ($layananLama->harga_custom ?? $layananLama->paketInternet?->harga ?? 0);
+        
+        $paketBaru = $permohonan->paketInternetBaru ?? $permohonan->paketInternet;
+        $hargaBaru = (float) ($permohonan->harga_custom ?? $paketBaru?->harga ?? 0);
+
+        if ($hargaBaru > $hargaLama) return JenisPerubahanPaketEnum::UPGRADE->value;
+        if ($hargaBaru < $hargaLama) return JenisPerubahanPaketEnum::DOWNGRADE->value;
+
+        return JenisPerubahanPaketEnum::UPGRADE->value;
     }
 
     private function konversiRelokasi(PermohonanLayanan $permohonan): LayananInternet
@@ -136,16 +151,5 @@ class KonversiPermohonanService
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => now()->toDateString(),
         ]);
-    }
-
-    private function tentukanJenisPerubahan(LayananInternet $layananLama, PermohonanLayanan $permohonan): string
-    {
-        $hargaLama = (float) ($layananLama->harga_custom ?? $layananLama->paket_internet?->harga ?? 0);
-        $hargaBaru = (float) ($permohonan->harga_custom ?? $permohonan->paketInternetBaru?->harga ?? 0);
-
-        if ($hargaBaru > $hargaLama) return JenisPerubahanPaketEnum::UPGRADE->value;
-        if ($hargaBaru < $hargaLama) return JenisPerubahanPaketEnum::DOWNGRADE->value;
-
-        return JenisPerubahanPaketEnum::UPGRADE->value;
     }
 }
