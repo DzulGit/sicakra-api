@@ -24,7 +24,7 @@ class PelangganController extends Controller
     {
         $pelanggan = $this->pelangganRepository->find(
             $pelanggan->id,
-            ['layananInternet.paketInternet', 'permohonanLayanan.paketInternet'],
+            ['layananInternet.paketInternet', 'layananInternet.tagihan', 'permohonanLayanan.paketInternet'],
         );
 
         return response()->json(['data' => $pelanggan]);

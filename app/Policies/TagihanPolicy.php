@@ -29,8 +29,9 @@ class TagihanPolicy
 
     public function create(Admin $admin): bool
     {
-        // Tagihan dibuat OTOMATIS oleh sistem (Scheduler/Job), bukan manual oleh Keuangan.
-        return false;
+        // Khusus Admin Keuangan / Super Admin: generate tagihan manual per
+        // pelanggan (kasus testing / tagihan yang gagal dibuat otomatis).
+        return in_array($admin->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true);
     }
 
     public function update(Admin $admin, Tagihan $tagihan): bool

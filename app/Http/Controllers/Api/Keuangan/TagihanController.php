@@ -2,16 +2,20 @@
 
 namespace App\Http\Controllers\Api\Keuangan;
 
+use App\Enums\StatusLayananEnum;
 use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
+use App\Models\Pelanggan;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
+use App\Services\GenerateTagihanService;
 use Illuminate\Http\Request;
 
 class TagihanController extends Controller
 {
     public function __construct(
         private readonly TagihanRepositoryInterface $tagihanRepository,
+        private readonly GenerateTagihanService $generateTagihanService,
     ) {}
 
     public function index(TagihanFilter $filter)
@@ -46,6 +50,46 @@ class TagihanController extends Controller
         return response()->json(['data' => $data]);
     }
 
-    // Sengaja TIDAK ADA store()/update() — TagihanPolicy melarang keduanya.
-    // Tagihan hanya dibuat otomatis oleh sistem (GenerateTagihanMassalJob).
+    /**
+     * Generate manual tagihan bulan berjalan untuk semua layanan aktif milik
+     * pelanggan. Idempotent — layanan yang tagihan periodenya sudah ada di-skip.
+     */
+    public function generateUntukPelanggan(Pelanggan $pelanggan)
+    {
+        $this->authorize('create', Tagihan::class);
+
+        $layananAktif = $pelanggan->layananInternet()
+            ->where('status', StatusLayananEnum::AKTIF)
+            ->get();
+
+        if ($layananAktif->isEmpty()) {
+            return response()->json(['message' => 'Pelanggan tidak punya layanan aktif.'], 422);
+        }
+
+        $tagihanDibuat = [];
+
+        foreach ($layananAktif as $layanan) {
+            $tagihan = $this->generateTagihanService->generateUntukLayanan(
+                $layanan,
+                now()->month,
+                now()->year,
+            );
+
+            if ($tagihan) {
+                $tagihanDibuat[] = $tagihan->load('layananInternet.paketInternet');
+            }
+        }
+
+        if (empty($tagihanDibuat)) {
+            return response()->json(['message' => 'Tagihan bulan ini sudah ada untuk semua layanan.'], 422);
+        }
+
+        return response()->json([
+            'message' => 'Tagihan berhasil dibuat.',
+            'data' => $tagihanDibuat,
+        ], 201);
+    }
+
+    // Sengaja TIDAK ADA store()/update() — selain generate manual di atas,
+    // Tagihan dibuat otomatis oleh sistem (GenerateTagihanMassalJob).
 }

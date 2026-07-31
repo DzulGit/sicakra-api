@@ -52,9 +52,6 @@ Route::prefix('admin')->group(function () {
 
             Route::get('teknisi', [PermohonanLayananController::class, 'daftarTeknisi']);
 
-            Route::get('pelanggan', [PelangganController::class, 'index']);
-            Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
-
             Route::get('tim-teknisi', [TimTeknisiController::class, 'index']);
             Route::get('tim-teknisi/aktif', [TimTeknisiController::class, 'listAktif']);
             Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
@@ -66,6 +63,13 @@ Route::prefix('admin')->group(function () {
             Route::post('paket-internet', [OperasionalPaketInternetController::class, 'store']);
             Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
             Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
+        });
+
+        // ----- Pelanggan (Operasional + Keuangan) -----
+        // Keuangan perlu buka detail pelanggan untuk generate tagihan manual.
+        Route::middleware('peran:operasional,keuangan,super_admin')->prefix('operasional')->group(function () {
+            Route::get('pelanggan', [PelangganController::class, 'index']);
+            Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
         });
 
         // ----- Teknisi -----
@@ -84,6 +88,7 @@ Route::prefix('admin')->group(function () {
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
+            Route::post('tagihan/generate/{pelanggan}', [KeuanganTagihanController::class, 'generateUntukPelanggan']);
         });
 
         // ----- Super Admin -----
@@ -119,6 +124,7 @@ Route::prefix('pelanggan')->group(function () {
 
         Route::get('tagihan', [TagihanSayaController::class, 'index']);
         Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
+        Route::post('tagihan/{tagihan}/bayar', [TagihanSayaController::class, 'bayar']);
 
         Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
         Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);
