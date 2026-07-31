@@ -15,7 +15,7 @@ class SuperAdminSeeder extends Seeder
     public function run(): void
     {
         Admin::updateOrCreate(
-            ['email' => env('SUPER_ADMIN_EMAIL', 'superadmin@sicakra.com')],
+            ['email' => env('SUPER_ADMIN_EMAIL', 'admin@sicakra.com')],
             [
                 'nama_lengkap' => 'Super Admin',
                 'password' => env('SUPER_ADMIN_PASSWORD', 'Admins1cakra'),

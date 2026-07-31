@@ -91,15 +91,9 @@ class KonversiPermohonanService
             'layanan_internet_id' => $layanan->id,
             'permohonan_layanan_id' => $permohonan->id,
             'alamat_lama' => $layanan->alamat_pemasangan,
-            'rt_lama' => $layanan->rt,
-            'rw_lama' => $layanan->rw,
-            'kode_pos_lama' => $layanan->kode_pos,
             'latitude_lama' => $layanan->latitude,
             'longitude_lama' => $layanan->longitude,
             'alamat_baru' => $permohonan->alamat_pemasangan,
-            'rt_baru' => $permohonan->rt,
-            'rw_baru' => $permohonan->rw,
-            'kode_pos_baru' => $permohonan->kode_pos,
             'latitude_baru' => $permohonan->latitude,
             'longitude_baru' => $permohonan->longitude,
             'tanggal_relokasi' => now()->toDateString(),
@@ -110,10 +104,10 @@ class KonversiPermohonanService
             'latitude' => $permohonan->latitude,
             'longitude' => $permohonan->longitude,
         ];
-        if ($permohonan->detail_alamat) $update['detail_alamat'] = $permohonan->detail_alamat;
-        if ($permohonan->rt) $update['rt'] = $permohonan->rt;
-        if ($permohonan->rw) $update['rw'] = $permohonan->rw;
-        if ($permohonan->kode_pos) $update['kode_pos'] = $permohonan->kode_pos;
+        
+        if ($permohonan->detail_alamat) {
+            $update['detail_alamat'] = $permohonan->detail_alamat;
+        }
 
         return $this->layananInternetRepository->update($layanan, $update);
     }
@@ -137,9 +131,6 @@ class KonversiPermohonanService
             'harga_custom' => $permohonan->harga_custom,
             'alamat_pemasangan' => $permohonan->alamat_pemasangan,
             'detail_alamat' => $permohonan->detail_alamat,
-            'rt' => $permohonan->rt,
-            'rw' => $permohonan->rw,
-            'kode_pos' => $permohonan->kode_pos,
             'latitude' => $permohonan->latitude,
             'longitude' => $permohonan->longitude,
             'status' => StatusLayananEnum::AKTIF,

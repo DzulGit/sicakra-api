@@ -30,6 +30,24 @@ class PermohonanLayananService
                 'PMH'
             );
             $data['status'] = StatusPermohonanEnum::MENUNGGU_VERIFIKASI;
+            
+            $data['tipe_paket'] = $data['tipe_paket'] ?? 'reguler';
+
+            // Ambil data layanan sebelumnya jika latitude/longitude kosong (misal: ganti paket)
+            if (empty($data['latitude']) || empty($data['longitude']) || empty($data['alamat_pemasangan'])) {
+                if (!empty($data['layanan_internet_id'])) {
+                    $layanan = \App\Models\LayananInternet::find($data['layanan_internet_id']);
+                    
+                    $data['alamat_pemasangan'] = $data['alamat_pemasangan'] ?? $layanan->alamat_pemasangan ?? 'Alamat dari layanan aktif';
+                    $data['detail_alamat'] = $data['detail_alamat'] ?? $layanan->detail_alamat ?? null;
+                    $data['latitude'] = $data['latitude'] ?? $layanan->latitude ?? '0.000000';
+                    $data['longitude'] = $data['longitude'] ?? $layanan->longitude ?? '0.000000';
+                } else {
+                    $data['alamat_pemasangan'] = $data['alamat_pemasangan'] ?? 'Alamat default';
+                    $data['latitude'] = '0.000000';
+                    $data['longitude'] = '0.000000';
+                }
+            }
 
             $permohonan = $this->permohonanLayananRepository->create($data);
 
