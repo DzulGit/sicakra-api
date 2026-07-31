@@ -16,6 +16,7 @@ class VerifikasiPermohonanRequest extends FormRequest
         return [
             'status' => ['required', 'in:PERLU_REVISI,DITERIMA,DITOLAK'],
             'catatan' => ['required_if:status,PERLU_REVISI,DITOLAK', 'nullable', 'string'],
+            'harga_custom' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }

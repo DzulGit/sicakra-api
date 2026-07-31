@@ -23,6 +23,7 @@ class VerifikasiDanJadwalkanRequest extends FormRequest
                 Rule::exists('admin', 'id')->where('peran', 'teknisi'),
             ],
             'tim_teknisi_id' => ['nullable', 'exists:tim_teknisi,id'],
+            'harga_custom' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }

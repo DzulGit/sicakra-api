@@ -58,7 +58,6 @@ class PermohonanLayananController extends Controller
         $this->authorize('create', PermohonanLayanan::class);
 
         $data = $request->validated();
-
         $jenis = $data['jenis_permohonan'];
 
         // Relokasi: mewarisi paket dari layanan lama
@@ -71,23 +70,24 @@ class PermohonanLayananController extends Controller
             $data['harga_custom'] = $layananLama->harga_custom;
         }
 
-        // Ganti paket: simpan data layanan lama sebagai referensi
+        // Ganti paket: simpan data layanan lama sebagai referensi, tapi biarkan input paket baru
         if ($jenis === JenisPermohonanEnum::GANTI_PAKET->value) {
-            $layananLama = LayananInternet::with('paketInternet')->findOrFail($data['layanan_internet_id']);
+            $layananLama = LayananInternet::findOrFail($data['layanan_internet_id']);
+            
             // Pindahkan paket baru (dari frontend) ke paket_internet_id_baru
             $data['paket_internet_id_baru'] = $data['paket_internet_id'] ?? null;
-            // Simpan data layanan lama sebagai referensi
-            $data['tipe_paket'] = $layananLama->tipe_paket->value;
+            
+            // Simpan id paket lama sebagai referensi
             $data['paket_internet_id'] = $layananLama->paket_internet_id;
-            $data['nama_paket_custom'] = $layananLama->nama_paket_custom;
-            $data['kecepatan_custom_mbps'] = $layananLama->kecepatan_custom_mbps;
-            $data['harga_custom'] = $layananLama->harga_custom;
+            
+            // Kita biarkan $data['tipe_paket'], $data['nama_paket_custom'], dll 
+            // tetap menggunakan nilai dari $request agar paket custom baru bisa tersimpan.
         }
 
-        // Tambah paket: pelanggan pilih paket untuk layanan tambahan
-        if ($jenis === JenisPermohonanEnum::TAMBAH_PAKET->value) {
-            $data['tipe_paket'] = 'reguler';
-        }
+        // Tambah paket: 
+        // Blok if untuk TAMBAH_PAKET dihapus sepenuhnya.
+        // Dengan begini, tipe_paket (reguler/custom) dan detail paket custom 
+        // akan langsung menggunakan data yang divalidasi dari $request.
 
         $permohonan = $this->permohonanLayananService->buatPermohonan($data);
 
@@ -104,6 +104,13 @@ class PermohonanLayananController extends Controller
         $data = $request->validated();
         $statusBaru = StatusPermohonanEnum::from($data['status']);
 
+        // Simpan harga custom jika diterima
+        if ($statusBaru === StatusPermohonanEnum::DITERIMA && $permohonan->tipe_paket->value === \App\Enums\TipePaketEnum::CUSTOM->value && isset($data['harga_custom'])) {
+            $this->permohonanLayananRepository->update($permohonan, [
+                'harga_custom' => $data['harga_custom'],
+            ]);
+        }
+
         $permohonan = $this->permohonanLayananService->ubahStatus(
             $permohonan,
             $statusBaru,
@@ -119,7 +126,7 @@ class PermohonanLayananController extends Controller
 
         return response()->json(['data' => $permohonan]);
     }
-
+    
     /**
      * Verifikasi + jadwalkan dalam satu langkah — khusus pemasangan_baru.
      * Untuk DITERIMA: ubah status + buat jadwal kerja langsung.
@@ -147,6 +154,12 @@ class PermohonanLayananController extends Controller
             }
 
             if ($statusBaru === StatusPermohonanEnum::DITERIMA) {
+                if ($permohonan->tipe_paket->value === \App\Enums\TipePaketEnum::CUSTOM->value && isset($data['harga_custom'])) {
+                    $permohonan = $this->permohonanLayananRepository->update($permohonan, [
+                        'harga_custom' => $data['harga_custom'],
+                    ]);
+                }
+
                 $jadwal = $this->jadwalKerjaRepository->create([
                     'permohonan_layanan_id' => $permohonan->id,
                     'tim_teknisi_id' => $data['tim_teknisi_id'] ?? null,
