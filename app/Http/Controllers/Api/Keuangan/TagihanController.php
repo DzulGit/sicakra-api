@@ -31,7 +31,10 @@ class TagihanController extends Controller
     {
         $this->authorize('view', $tagihan);
 
-        $tagihan = $this->tagihanRepository->find($tagihan->id, ['layananInternet.pelanggan', 'pembayaran']);
+        $tagihan = $this->tagihanRepository->find(
+            $tagihan->id,
+            ['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran'],
+        );
 
         return response()->json(['data' => $tagihan]);
     }

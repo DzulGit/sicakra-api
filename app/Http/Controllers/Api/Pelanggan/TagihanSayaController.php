@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\Pelanggan;
 
+use App\Enums\StatusPembayaranEnum;
 use App\Events\TagihanDibuat;
 use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
+use App\Services\XenditInvoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,6 +16,7 @@ class TagihanSayaController extends Controller
 {
     public function __construct(
         private readonly TagihanRepositoryInterface $tagihanRepository,
+        private readonly XenditInvoiceService $xenditInvoiceService,
     ) {}
 
     public function index(Request $request, TagihanFilter $filter)
@@ -29,7 +32,10 @@ class TagihanSayaController extends Controller
     {
         $this->authorize('view', $tagihan);
 
-        $tagihan = $this->tagihanRepository->find($tagihan->id, ['layananInternet', 'pembayaran']);
+        $tagihan = $this->tagihanRepository->find(
+            $tagihan->id,
+            ['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran'],
+        );
 
         return response()->json(['data' => $tagihan]);
     }
@@ -38,7 +44,7 @@ class TagihanSayaController extends Controller
     {
         $this->authorize('view', $tagihan);
 
-        if ($tagihan->status_pembayaran === \App\Enums\StatusPembayaranEnum::SUDAH_BAYAR) {
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
             return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
         }
 
@@ -58,8 +64,9 @@ class TagihanSayaController extends Controller
         }
 
         $tagihan->update([
-            'status_pembayaran' => \App\Enums\StatusPembayaranEnum::BELUM_BAYAR,
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
             'xendit_invoice_id' => null,
+            'xendit_external_id' => null,
             'xendit_invoice_url' => null,
             'xendit_invoice_status' => null,
             'xendit_invoice_expires_at' => null,
@@ -69,5 +76,48 @@ class TagihanSayaController extends Controller
         TagihanDibuat::dispatch($tagihan->fresh(['layananInternet.pelanggan']));
 
         return response()->json(['message' => 'OK', 'data' => $tagihan->fresh(['pembayaran'])]);
+    }
+
+    /**
+     * Buat ulang link pembayaran Xendit untuk tagihan yang invoice-nya
+     * kadaluwarsa. Sinkron — URL baru langsung dikembalikan ke frontend.
+     */
+    public function regenerateInvoice(Tagihan $tagihan): JsonResponse
+    {
+        $this->authorize('view', $tagihan);
+
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
+            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        }
+
+        if ($tagihan->xendit_invoice_retry_count >= 3) {
+            return response()->json(['message' => 'Maksimal percobaan pembayaran telah tercapai. Hubungi customer service.'], 422);
+        }
+
+        $tagihan->update([
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'xendit_invoice_id' => null,
+            'xendit_external_id' => null,
+            'xendit_invoice_url' => null,
+            'xendit_invoice_status' => null,
+            'xendit_invoice_expires_at' => null,
+            'xendit_invoice_retry_count' => $tagihan->xendit_invoice_retry_count + 1,
+        ]);
+
+        $tagihan = $tagihan->fresh();
+        $body = $this->xenditInvoiceService->buatInvoice($tagihan);
+
+        $tagihan->update([
+            'xendit_invoice_id' => $body['id'],
+            'xendit_external_id' => $body['external_id'] ?? null,
+            'xendit_invoice_url' => $body['invoice_url'],
+            'xendit_invoice_status' => 'active',
+            'xendit_invoice_expires_at' => $body['expiry_date'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Link pembayaran baru berhasil dibuat.',
+            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+        ]);
     }
 }

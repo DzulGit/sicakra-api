@@ -125,6 +125,7 @@ Route::prefix('pelanggan')->group(function () {
         Route::get('tagihan', [TagihanSayaController::class, 'index']);
         Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
         Route::post('tagihan/{tagihan}/bayar', [TagihanSayaController::class, 'bayar']);
+        Route::post('tagihan/{tagihan}/regenerate-invoice', [TagihanSayaController::class, 'regenerateInvoice']);
 
         Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
         Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);
