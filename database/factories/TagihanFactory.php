@@ -14,7 +14,7 @@ class TagihanFactory extends Factory
     public function definition(): array
     {
         return [
-            'nomor_tagihan' => 'INV-' . fake()->unique()->numerify('#######'),
+            'nomor_tagihan' => 'INV' . str_pad((string) fake()->unique()->numberBetween(1, 999999), 6, '0', STR_PAD_LEFT),
             'layanan_internet_id' => LayananInternet::factory(),
             'periode_bulan' => now()->month,
             'periode_tahun' => now()->year,

@@ -27,6 +27,7 @@ class Tagihan extends Model
         'tanggal_jatuh_tempo',
         'status_pembayaran',
         'xendit_invoice_id',
+        'xendit_external_id',
         'xendit_invoice_url',
         'xendit_invoice_status',
         'xendit_invoice_expires_at',
