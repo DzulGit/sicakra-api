@@ -25,7 +25,7 @@ class BuatInvoiceXenditTest extends TestCase
     public function test_listener_memanggil_xendit_api_dan_update_tagihan(): void
     {
         $tagihan = Tagihan::factory()->create([
-            'nomor_tagihan' => 'INV-0000001',
+            'nomor_tagihan' => 'INV000001',
             'total_tagihan' => 150000,
             'jumlah_bulan' => 1,
         ]);
@@ -34,7 +34,7 @@ class BuatInvoiceXenditTest extends TestCase
             'api.xendit.co/*' => Http::response([
                 'id' => 'xendit-inv-abc-123',
                 'invoice_url' => 'https://checkout.xendit.co/invoice/abc-123',
-                'external_id' => 'TGH-INV-0000001',
+                'external_id' => 'TGH-INV000001',
                 'amount' => 150000,
                 'status' => 'PENDING',
                 'expiry_date' => now()->addDays(3)->toIso8601String(),
@@ -59,7 +59,7 @@ class BuatInvoiceXenditTest extends TestCase
     public function test_listener_tidak_panggil_api_jika_invoice_sudah_ada(): void
     {
         $tagihan = Tagihan::factory()->create([
-            'nomor_tagihan' => 'INV-0000001',
+            'nomor_tagihan' => 'INV000001',
             'total_tagihan' => 150000,
             'xendit_invoice_id' => 'existing-inv',
             'xendit_invoice_url' => 'https://existing.url',

@@ -32,6 +32,10 @@ class XenditWebhookController
             ? substr($externalId, strlen($tagihanPrefix))
             : null;
 
+        // external_id regenerate memakai suffix "-N" (mis. INV000001-2 biar unik
+        // di Xendit). Strip suffix itu agar lookup nomor tagihan tetap cocok.
+        $nomorTagihan = $nomorTagihan ? preg_replace('/-\d+$/', '', $nomorTagihan) : null;
+
         if (!$nomorTagihan) {
             return response()->json(['message' => 'Invalid external_id'], 400);
         }

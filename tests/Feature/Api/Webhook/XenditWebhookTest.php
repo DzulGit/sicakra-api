@@ -22,7 +22,7 @@ class XenditWebhookTest extends TestCase
         parent::setUp();
         Config::set('services.xendit.webhook_verification_token', $this->validToken);
         $this->tagihan = Tagihan::factory()->create([
-            'nomor_tagihan' => 'INV-0000001',
+            'nomor_tagihan' => 'INV000001',
             'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
         ]);
     }
@@ -30,7 +30,7 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_tanpa_token_harus_401(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-0000001',
+            'external_id' => 'TGH-INV000001',
             'status' => 'PAID',
         ]);
 
@@ -41,7 +41,7 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_dengan_token_salah_harus_401(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-0000001',
+            'external_id' => 'TGH-INV000001',
             'status' => 'PAID',
         ], ['X-Callback-Token' => 'wrong-token']);
 
@@ -52,7 +52,7 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_status_paid_update_tagihan_dan_buat_pembayaran(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-0000001',
+            'external_id' => 'TGH-INV000001',
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
             'amount' => 150000,
@@ -82,7 +82,7 @@ class XenditWebhookTest extends TestCase
         ]);
 
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-0000001',
+            'external_id' => 'TGH-INV000001',
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
             'amount' => 150000,
@@ -97,7 +97,7 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_status_expired_update_tagihan(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-0000001',
+            'external_id' => 'TGH-INV000001',
             'id' => 'xendit-inv-123',
             'status' => 'EXPIRED',
             'amount' => 150000,
@@ -129,7 +129,7 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_dengan_nomor_tagihan_tidak_dikenal_harus_404(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV-9999999',
+            'external_id' => 'TGH-INV9999999',
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
         ], ['X-Callback-Token' => $this->getVerificationToken()]);
