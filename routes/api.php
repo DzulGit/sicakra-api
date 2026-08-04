@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Auth\AuthAdminController;
 use App\Http\Controllers\Api\Auth\AuthPelangganController;
+use App\Http\Controllers\Api\Keuangan\DashboardKeuanganController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController as OperasionalLaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
@@ -85,6 +86,7 @@ Route::prefix('admin')->group(function () {
 
         // ----- Keuangan -----
         Route::middleware('peran:keuangan,super_admin')->prefix('keuangan')->group(function () {
+            Route::get('dashboard', [DashboardKeuanganController::class, 'index']);
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
