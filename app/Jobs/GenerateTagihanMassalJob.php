@@ -25,7 +25,6 @@ class GenerateTagihanMassalJob implements ShouldQueue
     public function handle(GenerateTagihanService $generateTagihanService): void
     {
         LayananInternet::where('status', StatusLayananEnum::AKTIF)
-            ->whereDay('tanggal_aktif', $this->tanggalBerjalan)
             ->chunkById(100, function ($kumpulanLayanan) use ($generateTagihanService) {
                 foreach ($kumpulanLayanan as $layanan) {
                     try {
@@ -35,7 +34,6 @@ class GenerateTagihanMassalJob implements ShouldQueue
                             $this->periodeTahun
                         );
                     } catch (\Throwable $e) {
-                        // Satu layanan gagal TIDAK BOLEH menghentikan proses layanan lain
                         Log::error("Gagal generate tagihan untuk layanan #{$layanan->id}: {$e->getMessage()}");
                     }
                 }
