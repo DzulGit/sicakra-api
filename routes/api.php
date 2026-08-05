@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\Auth\AuthAdminController;
 use App\Http\Controllers\Api\Auth\AuthPelangganController;
 use App\Http\Controllers\Api\Keuangan\DashboardKeuanganController;
+use App\Http\Controllers\Api\Keuangan\PendapatanController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
+use App\Http\Controllers\Api\Operasional\DashboardController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController as OperasionalLaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
 use App\Http\Controllers\Api\Operasional\PelangganController;
@@ -37,7 +39,7 @@ Route::prefix('admin')->group(function () {
 
         // ----- Operasional -----
         Route::middleware('peran:operasional,super_admin')->prefix('operasional')->group(function () {
-            Route::get('dashboard', [\App\Http\Controllers\Api\Operasional\DashboardController::class, 'index']);
+            Route::get('dashboard', [DashboardController::class, 'index']);
             Route::get('permohonan-layanan', [PermohonanLayananController::class, 'index']);
             Route::get('permohonan-layanan/{permohonan}', [PermohonanLayananController::class, 'show']);
             Route::post('permohonan-layanan', [PermohonanLayananController::class, 'store']);
@@ -87,6 +89,9 @@ Route::prefix('admin')->group(function () {
         // ----- Keuangan -----
         Route::middleware('peran:keuangan,super_admin')->prefix('keuangan')->group(function () {
             Route::get('dashboard', [DashboardKeuanganController::class, 'index']);
+            Route::get('pendapatan', [PendapatanController::class, 'index']);
+            Route::get('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
+            Route::get('pendapatan/report', [PendapatanController::class, 'report']);
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
