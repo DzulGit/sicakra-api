@@ -15,9 +15,19 @@ class GeneratorNomorService
      *
      * @param  class-string<Model>  $modelClass
      */
-    public function generate(string $modelClass, string $kolom, string $prefix): string
+    public function generate(string $modelClass, string $kolom, string $prefix, bool $acak = false): string
     {
-        return DB::transaction(function () use ($modelClass, $kolom, $prefix) {
+        return DB::transaction(function () use ($modelClass, $kolom, $prefix, $acak) {
+            if ($acak) {
+                // ponytail: serangkaian bilangan acak 6 digit tanpa pola, validasi
+                // unik dengan query; cukup aman untuk kebutuhan sekarang.
+                do {
+                    $nomor = $prefix.random_int(100000, 999999);
+                } while ($modelClass::lockForUpdate()->where($kolom, $nomor)->exists());
+
+                return $nomor;
+            }
+
             $terakhir = $modelClass::lockForUpdate()
                 ->whereNotNull($kolom)
                 ->orderByDesc('id')

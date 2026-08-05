@@ -24,7 +24,8 @@ class AktivasiAkunPelangganService
         $nomorPelanggan = $this->generatorNomor->generate(
             Pelanggan::class,
             'nomor_pelanggan',
-            'PLG'
+            'PLG',
+            true
         );
 
         // Password & username default = nomor_pelanggan. Password di-hash
