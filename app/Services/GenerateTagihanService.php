@@ -30,6 +30,19 @@ class GenerateTagihanService
             return null;
         }
 
+        $isTagihanPertama = !Tagihan::where('layanan_internet_id', $layanan->id)->exists();
+
+        if (!$isTagihanPertama) {
+            // Asumsi penagihan rutin terjadi tiap tanggal 20
+            $targetEksekusi = Carbon::create($periodeTahun, $periodeBulan, 20)->startOfDay();
+            $batasAktif = Carbon::parse($layanan->tanggal_aktif)->startOfDay();
+
+            // Blokir jika tanggal 20 di bulan target masih sebelum masa aktif habis
+            if ($targetEksekusi->lessThan($batasAktif)) {
+                return null;
+            }
+        }
+
         $sudahAda = Tagihan::where('layanan_internet_id', $layanan->id)
             ->where('periode_bulan', $periodeBulan)
             ->where('periode_tahun', $periodeTahun)
@@ -75,10 +88,6 @@ class GenerateTagihanService
         return [$layanan->nama_paket_custom, $layanan->kecepatan_custom_mbps, $layanan->harga_custom];
     }
 
-    /**
-     * Tanggal jatuh tempo mengikuti tanggal_aktif layanan, di-clamp kalau bulan
-     * tujuan lebih pendek (mis. aktif tanggal 31, tapi Februari cuma 28/29 hari).
-     */
     private function hitungTanggalJatuhTempo(LayananInternet $layanan, int $bulan, int $tahun): string
     {
         $hariAktif = Carbon::parse($layanan->tanggal_aktif)->day;

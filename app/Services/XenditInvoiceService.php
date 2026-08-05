@@ -23,7 +23,7 @@ class XenditInvoiceService
             'amount' => (float) $tagihan->total_tagihan,
             'description' => $this->buatDeskripsi($tagihan),
             'currency' => 'IDR',
-            'invoice_duration' => config('services.xendit.invoice_duration', 259200),
+            'invoice_duration' => config('services.xendit.invoice_duration', 864000),
             'payment_methods' => ['QRIS', 'BCA', 'MANDIRI', 'BRI', 'ALFAMART', 'INDOMARET'],
             'metadata' => [
                 'tagihan_id' => $tagihan->id,
