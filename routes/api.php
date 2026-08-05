@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
+use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
 use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
 use App\Http\Controllers\Api\Teknisi\LaporanKendalaController as TeknisiLaporanKendalaController;
 use Illuminate\Support\Facades\Route;
@@ -77,6 +78,8 @@ Route::prefix('admin')->group(function () {
 
         // ----- Teknisi -----
         Route::middleware('peran:teknisi,super_admin')->prefix('teknisi')->group(function () {
+            Route::get('dashboard', [DashboardTeknisiController::class, 'index']);
+
             Route::get('jadwal-kerja', [JadwalKerjaController::class, 'index']);
             Route::get('jadwal-kerja/{jadwalKerja}', [JadwalKerjaController::class, 'show']);
             Route::patch('jadwal-kerja/{jadwalKerja}/hasil', [JadwalKerjaController::class, 'isiHasil']);
