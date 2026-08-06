@@ -61,6 +61,25 @@ class GenerateTagihanServiceTest extends TestCase
         $this->assertEquals(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
     }
 
+    public function test_tidak_generate_tagihan_dobel_untuk_periode_di_dalam_tagihan_multi_bulan(): void
+    {
+        $layanan = LayananInternet::factory()->create([
+            'status' => StatusLayananEnum::AKTIF,
+            'tanggal_aktif' => '2026-01-15',
+        ]);
+
+        $service = app(GenerateTagihanService::class);
+        $service->generateUntukLayanan($layanan, 1, 2026, 3); // Jan+Feb+Mar
+
+        // Generate tagihan Feb harus ditolak karena sudah ter-cover tagihan multi-bulan.
+        $tagihanFebruari = $service->generateUntukLayanan($layanan, 2, 2026);
+        $tagihanMaret = $service->generateUntukLayanan($layanan, 3, 2026);
+
+        $this->assertNull($tagihanFebruari);
+        $this->assertNull($tagihanMaret);
+        $this->assertEquals(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
+    }
+
     public function test_tanggal_jatuh_tempo_di_clamp_untuk_bulan_yang_lebih_pendek(): void
     {
         $layanan = LayananInternet::factory()->create([
