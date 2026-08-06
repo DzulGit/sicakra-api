@@ -23,9 +23,18 @@ class GenerateTagihanService
      * Generate 1 tagihan untuk 1 layanan pada periode tertentu.
      * Idempotent: kalau tagihan periode itu sudah ada, tidak dibuat dobel
      * (dijaga juga oleh unique constraint DB sebagai lapisan pengaman terakhir).
+     *
+     * `$tanggalJatuhTempo` opsional: dipakai flow manual admin (tanggal tagihan
+     * hari ini + jumlah hari jatuh tempo). Null → jatuh tempo = hari penagihan
+     * bulan periode (perilaku lama).
      */
-    public function generateUntukLayanan(LayananInternet $layanan, int $periodeBulan, int $periodeTahun, int $jumlahBulan = 1): ?Tagihan
-    {
+    public function generateUntukLayanan(
+        LayananInternet $layanan,
+        int $periodeBulan,
+        int $periodeTahun,
+        int $jumlahBulan = 1,
+        ?Carbon $tanggalJatuhTempo = null,
+    ): ?Tagihan {
         if ($layanan->status !== StatusLayananEnum::AKTIF) {
             return null;
         }
@@ -36,7 +45,9 @@ class GenerateTagihanService
             // Penagihan dijadwalkan via tanggal_tagihan pelanggan (bukan hardcoded 20).
             // Pakai tanggal jatuh tempo yang sudah di-snap, biar Carbon::create tidak
             // roll-over kalau hari dasar 31 jatuh di bulan pendek (mis. Februari).
-            $targetEksekusi = Carbon::parse($this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun))->startOfDay();
+            $targetEksekusi = ($tanggalJatuhTempo ?? Carbon::parse(
+                $this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun)
+            ))->startOfDay();
             $batasAktif = Carbon::parse($layanan->tanggal_aktif)->startOfDay();
 
             // Blokir jika hari penagihan di bulan target masih sebelum masa aktif habis
@@ -53,7 +64,7 @@ class GenerateTagihanService
             return null;
         }
 
-        return DB::transaction(function () use ($layanan, $periodeBulan, $periodeTahun, $jumlahBulan) {
+        return DB::transaction(function () use ($layanan, $periodeBulan, $periodeTahun, $jumlahBulan, $tanggalJatuhTempo) {
             [$namaPaket, $kecepatan, $harga] = $this->snapshotPaket($layanan);
 
             $nomorTagihan = $this->generatorNomor->generate(Tagihan::class, 'nomor_tagihan', 'INV');
@@ -68,7 +79,9 @@ class GenerateTagihanService
                 'harga_snapshot' => $harga,
                 'total_tagihan' => $harga * $jumlahBulan,
                 'jumlah_bulan' => $jumlahBulan,
-                'tanggal_jatuh_tempo' => $this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun),
+                'tanggal_jatuh_tempo' => $tanggalJatuhTempo
+                    ? $tanggalJatuhTempo->toDateString()
+                    : $this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun),
                 'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
             ]);
 

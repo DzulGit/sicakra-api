@@ -8,7 +8,6 @@ use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
 use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
-use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
@@ -62,13 +61,25 @@ class TagihanController extends Controller
     }
 
     /**
-     * Buat tagihan 1 bulan untuk siklus terdekat yang belum ditagih, per layanan
-     * aktif milik pelanggan ini. Tombol 1-klik admin — TANPA input jumlah bulan.
-     * Idempotent: siklus yang sudah punya tagihan di-skip.
+     * Buat tagihan untuk periode tertentu yang dipilih admin (pilihan bulan tagihan)
+     * + jumlah hari jatuh tempo. Preview & konfirmasi ditangani frontend sebelum
+     * mengirim request ini. Idempotent: periode yang sudah ter-cover tagihan di-skip.
      */
     public function generateUntukPelanggan(Request $request, Pelanggan $pelanggan)
     {
         $this->authorize('create', Tagihan::class);
+
+        $validated = $request->validate([
+            'periode_bulan' => 'required|integer|min:1|max:12',
+            'periode_tahun' => 'required|integer|min:2020|max:2100',
+            'jumlah_hari_jatuh_tempo' => ['sometimes', 'integer', 'min:1', 'max:31'],
+        ]);
+
+        $periodeBulan = (int) $validated['periode_bulan'];
+        $periodeTahun = (int) $validated['periode_tahun'];
+        $jumlahHariJatuhTempo = (int) ($validated['jumlah_hari_jatuh_tempo'] ?? 7);
+
+        $tanggalJatuhTempo = Carbon::today()->addDays($jumlahHariJatuhTempo);
 
         $layananAktif = $pelanggan->layananInternet()
             ->where('status', StatusLayananEnum::AKTIF)
@@ -81,9 +92,12 @@ class TagihanController extends Controller
         $tagihanDibuat = [];
 
         foreach ($layananAktif as $layanan) {
-            [$bulan, $tahun] = $this->periodeTerdekatBelumDitagih($layanan);
-
-            $tagihan = $this->generateTagihanService->generateUntukLayanan($layanan, $bulan, $tahun);
+            $tagihan = $this->generateTagihanService->generateUntukLayanan(
+                $layanan,
+                $periodeBulan,
+                $periodeTahun,
+                tanggalJatuhTempo: $tanggalJatuhTempo,
+            );
 
             if ($tagihan) {
                 $tagihanDibuat[] = $tagihan->load('layananInternet.paketInternet');
@@ -92,35 +106,14 @@ class TagihanController extends Controller
 
         if (empty($tagihanDibuat)) {
             return response()->json([
-                'message' => 'Siklus terdekat sudah punya tagihan untuk semua layanan pelanggan ini.',
+                'message' => "Tagihan periode {$periodeBulan}/{$periodeTahun} sudah ter-cover untuk semua layanan pelanggan ini.",
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Tagihan bulan terdekat berhasil dibuat.',
+            'message' => "Tagihan periode {$periodeBulan}/{$periodeTahun} berhasil dibuat.",
             'data' => $tagihanDibuat,
         ], 201);
-    }
-
-    /** Siklus (>= bulan berjalan) yang belum punya tagihan untuk layanan itu. */
-    private function periodeTerdekatBelumDitagih(LayananInternet $layanan): array
-    {
-        $mulai = Carbon::now()->startOfMonth();
-
-        for ($i = 0; $i < 12; $i++) {
-            $tanggal = $mulai->copy()->addMonthsNoOverflow($i);
-
-            $sudahAda = Tagihan::where('layanan_internet_id', $layanan->id)
-                ->where('periode_bulan', $tanggal->month)
-                ->where('periode_tahun', $tanggal->year)
-                ->exists();
-
-            if (! $sudahAda) {
-                return [$tanggal->month, $tanggal->year];
-            }
-        }
-
-        return [$mulai->month, $mulai->year];
     }
 
     /**

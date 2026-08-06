@@ -19,11 +19,13 @@ class PaketInternet extends Model
         'jumlah_perangkat',
         'deskripsi',
         'status_aktif',
+        'promo_gratis_bulan',
     ];
 
     protected $casts = [
         'status_aktif' => 'boolean',
         'harga' => 'decimal:2',
+        'promo_gratis_bulan' => 'integer',
     ];
 
     public function permohonanLayanan(): HasMany

@@ -6,6 +6,7 @@ use App\Enums\JenisPermohonanEnum;
 use App\Enums\JenisPerubahanPaketEnum;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPermohonanEnum;
+use App\Enums\TipePaketEnum;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
@@ -52,7 +53,13 @@ class KonversiPermohonanService
         // penagihan awal dihitung.
         $this->aktivasiAkunPelangganService->aktivasiJikaLayananPertama($permohonan->pelanggan);
 
-        return $this->buatLayananDariPermohonan($permohonan);
+        // Promo gratis bulan dari Master Paket (default 0) hanya untuk pemasangan
+        // baru — diterapkan otomatis ke bebas_tagihan_bulan, tanpa input manual admin.
+        $bebasBulanPromo = $permohonan->tipe_paket === TipePaketEnum::REGULER
+            ? (int) ($permohonan->paketInternet?->promo_gratis_bulan ?? 0)
+            : 0;
+
+        return $this->buatLayananDariPermohonan($permohonan, $bebasBulanPromo);
     }
 
     private function konversiTambahPaket(PermohonanLayanan $permohonan): LayananInternet
@@ -135,7 +142,7 @@ class KonversiPermohonanService
         return $this->layananInternetRepository->update($layanan, $update);
     }
 
-    private function buatLayananDariPermohonan(PermohonanLayanan $permohonan): LayananInternet
+    private function buatLayananDariPermohonan(PermohonanLayanan $permohonan, int $bebasBulanPromo = 0): LayananInternet
     {
         $nomorLayanan = $this->generatorNomor->generate(
             LayananInternet::class,
@@ -158,6 +165,7 @@ class KonversiPermohonanService
             'longitude' => $permohonan->longitude,
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => now()->toDateString(),
+            'bebas_tagihan_bulan' => $bebasBulanPromo,
         ]);
 
         // Jadwal tagihan pertama = siklus bulan depan (respect bebas_tagihan_bulan),

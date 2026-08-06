@@ -20,6 +20,7 @@ class SimpanPaketInternetRequest extends FormRequest
             'jumlah_perangkat' => ['sometimes', 'integer', 'min:1', 'max:255'],
             'deskripsi' => ['nullable', 'string'],
             'status_aktif' => ['sometimes', 'boolean'],
+            'promo_gratis_bulan' => ['sometimes', 'integer', 'min:0', 'max:24'],
         ];
     }
 }

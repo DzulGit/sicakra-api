@@ -44,6 +44,13 @@ class TagihanSayaController extends Controller
     {
         $this->authorize('view', $tagihan);
 
+        if ($this->adaTagihanOverdue($tagihan)) {
+            return response()->json([
+                'message' => 'Masih ada tagihan yang jatuh temponya terlewati dan belum lunas. Silakan hubungi Admin Sicakra via WhatsApp.',
+                'kode' => 'OVERDUE_LOCK',
+            ], 422);
+        }
+
         if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
             return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
         }
@@ -90,12 +97,40 @@ class TagihanSayaController extends Controller
     }
 
     /**
+     * Overdue lock: blokir bayar "tagihan berjalan" (tagihan yang sedang diproses ini)
+     * bila masih ada tagihan LAIN dari pelanggan yang sama yang jatuh temponya sudah
+     * TERLEWAT dan belum lunas. Pelanggan diarahkan menghubungi Admin via WhatsApp.
+     * Tagihan overdue itu sendiri tetap boleh dibayar — supaya utang lama bisa dilunasi.
+     */
+    private function adaTagihanOverdue(Tagihan $tagihan): bool
+    {
+        return Tagihan::query()
+            ->where('id', '!=', $tagihan->id)
+            ->whereHas('layananInternet', function ($q) use ($tagihan) {
+                $q->where('pelanggan_id', $tagihan->layananInternet?->pelanggan_id);
+            })
+            ->whereIn('status_pembayaran', [
+                StatusPembayaranEnum::BELUM_BAYAR->value,
+                StatusPembayaranEnum::KEDALUWARSA->value,
+            ])
+            ->whereDate('tanggal_jatuh_tempo', '<', now()->toDateString())
+            ->exists();
+    }
+
+    /**
      * Buat ulang link pembayaran Xendit untuk tagihan yang invoice-nya
      * kadaluwarsa. Sinkron — URL baru langsung dikembalikan ke frontend.
      */
     public function regenerateInvoice(Tagihan $tagihan): JsonResponse
     {
         $this->authorize('view', $tagihan);
+
+        if ($this->adaTagihanOverdue($tagihan)) {
+            return response()->json([
+                'message' => 'Masih ada tagihan yang jatuh temponya terlewati dan belum lunas. Silakan hubungi Admin Sicakra via WhatsApp.',
+                'kode' => 'OVERDUE_LOCK',
+            ], 422);
+        }
 
         if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
             return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
