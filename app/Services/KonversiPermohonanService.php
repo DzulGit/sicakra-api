@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Enums\JenisPerubahanPaketEnum;
 use App\Enums\JenisPermohonanEnum;
+use App\Enums\JenisPerubahanPaketEnum;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPermohonanEnum;
 use App\Models\Admin;
@@ -21,7 +21,7 @@ class KonversiPermohonanService
         private readonly GeneratorNomorService $generatorNomor,
         private readonly PermohonanLayananService $permohonanLayananService,
         private readonly AktivasiAkunPelangganService $aktivasiAkunPelangganService,
-        private readonly GenerateTagihanService $generateTagihanService,
+        private readonly SiklusPenagihanService $siklusPenagihanService,
     ) {}
 
     public function konversi(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
@@ -47,19 +47,12 @@ class KonversiPermohonanService
 
     private function konversiPemasanganBaru(PermohonanLayanan $permohonan): LayananInternet
     {
-        $layanan = $this->buatLayananDariPermohonan($permohonan);
+        // Aktivasi akun (nomor_pelanggan + tanggal_tagihan dari tanggal install)
+        // DULUAN supaya tanggal_tagihan sudah benar saat layanan dibuat & jadwal
+        // penagihan awal dihitung.
         $this->aktivasiAkunPelangganService->aktivasiJikaLayananPertama($permohonan->pelanggan);
 
-        // Tagihan bulan pertama langsung dibuat saat instalasi selesai, supaya
-        // pelanggan langsung lihat tagihan di dashboard-nya. Idempotent — kalau
-        // tagihan periode bulan ini sudah ada, tidak dibuat dobel.
-        $this->generateTagihanService->generateUntukLayanan(
-            $layanan,
-            now()->month,
-            now()->year,
-        );
-
-        return $layanan;
+        return $this->buatLayananDariPermohonan($permohonan);
     }
 
     private function konversiTambahPaket(PermohonanLayanan $permohonan): LayananInternet
@@ -70,7 +63,7 @@ class KonversiPermohonanService
     private function konversiGantiPaket(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
     {
         $layanan = $permohonan->layananDirelokasi;
-        
+
         // Ambil paket baru dari paketInternetBaru (jika diset) atau fallback ke paketInternet
         $paketBaru = $permohonan->paketInternetBaru ?? $permohonan->paketInternet;
 
@@ -99,12 +92,16 @@ class KonversiPermohonanService
     private function tentukanJenisPerubahan(LayananInternet $layananLama, PermohonanLayanan $permohonan): string
     {
         $hargaLama = (float) ($layananLama->harga_custom ?? $layananLama->paketInternet?->harga ?? 0);
-        
+
         $paketBaru = $permohonan->paketInternetBaru ?? $permohonan->paketInternet;
         $hargaBaru = (float) ($permohonan->harga_custom ?? $paketBaru?->harga ?? 0);
 
-        if ($hargaBaru > $hargaLama) return JenisPerubahanPaketEnum::UPGRADE->value;
-        if ($hargaBaru < $hargaLama) return JenisPerubahanPaketEnum::DOWNGRADE->value;
+        if ($hargaBaru > $hargaLama) {
+            return JenisPerubahanPaketEnum::UPGRADE->value;
+        }
+        if ($hargaBaru < $hargaLama) {
+            return JenisPerubahanPaketEnum::DOWNGRADE->value;
+        }
 
         return JenisPerubahanPaketEnum::UPGRADE->value;
     }
@@ -130,7 +127,7 @@ class KonversiPermohonanService
             'latitude' => $permohonan->latitude,
             'longitude' => $permohonan->longitude,
         ];
-        
+
         if ($permohonan->detail_alamat) {
             $update['detail_alamat'] = $permohonan->detail_alamat;
         }
@@ -146,7 +143,7 @@ class KonversiPermohonanService
             'LYN'
         );
 
-        return $this->layananInternetRepository->create([
+        $layanan = $this->layananInternetRepository->create([
             'nomor_layanan' => $nomorLayanan,
             'permohonan_layanan_id' => $permohonan->id,
             'pelanggan_id' => $permohonan->pelanggan_id,
@@ -162,5 +159,11 @@ class KonversiPermohonanService
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => now()->toDateString(),
         ]);
+
+        // Jadwal tagihan pertama = siklus bulan depan (respect bebas_tagihan_bulan),
+        // bukan langsung ditagih di bulan aktivasi.
+        $this->siklusPenagihanService->aturJadwalAwal($layanan);
+
+        return $layanan;
     }
 }

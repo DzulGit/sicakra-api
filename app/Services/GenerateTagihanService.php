@@ -30,25 +30,26 @@ class GenerateTagihanService
             return null;
         }
 
-        $isTagihanPertama = !Tagihan::where('layanan_internet_id', $layanan->id)->exists();
+        $isTagihanPertama = ! Tagihan::where('layanan_internet_id', $layanan->id)->exists();
 
-        if (!$isTagihanPertama) {
-            // Asumsi penagihan rutin terjadi tiap tanggal 20
-            $targetEksekusi = Carbon::create($periodeTahun, $periodeBulan, 20)->startOfDay();
+        if (! $isTagihanPertama) {
+            // Penagihan dijadwalkan via tanggal_tagihan pelanggan (bukan hardcoded 20).
+            // Pakai tanggal jatuh tempo yang sudah di-snap, biar Carbon::create tidak
+            // roll-over kalau hari dasar 31 jatuh di bulan pendek (mis. Februari).
+            $targetEksekusi = Carbon::parse($this->hitungTanggalJatuhTempo($layanan, $periodeBulan, $periodeTahun))->startOfDay();
             $batasAktif = Carbon::parse($layanan->tanggal_aktif)->startOfDay();
 
-            // Blokir jika tanggal 20 di bulan target masih sebelum masa aktif habis
+            // Blokir jika hari penagihan di bulan target masih sebelum masa aktif habis
             if ($targetEksekusi->lessThan($batasAktif)) {
                 return null;
             }
         }
 
-        $sudahAda = Tagihan::where('layanan_internet_id', $layanan->id)
-            ->where('periode_bulan', $periodeBulan)
-            ->where('periode_tahun', $periodeTahun)
-            ->exists();
-
-        if ($sudahAda) {
+        // Guard anti-tagihan-ganda: blokir kalau periode yang diminta sudah ter-cover
+        // tagihan yang ada — baik periode yang sama PERSIS, maupun periode yang jatuh di
+        // dalam rentang tagihan multi-bulan (mis. tagihan Januari jumlah_bulan=3 sudah
+        // meng-cover Feb & Mar, jadi jangan generate tagihan Feb nya lagi).
+        if ($this->periodeTercover($layanan, $periodeBulan, $periodeTahun)) {
             return null;
         }
 
@@ -88,12 +89,36 @@ class GenerateTagihanService
         return [$layanan->nama_paket_custom, $layanan->kecepatan_custom_mbps, $layanan->harga_custom];
     }
 
+    /**
+     * True bila periode (bulan,tahun) sudah ter-cover oleh tagihan yang ada:
+     * rentang tagihan = [periode_bulan..periode_bulan + jumlah_bulan - 1].
+     */
+    private function periodeTercover(LayananInternet $layanan, int $periodeBulan, int $periodeTahun): bool
+    {
+        return Tagihan::where('layanan_internet_id', $layanan->id)
+            ->get()
+            ->contains(function (Tagihan $t) use ($periodeBulan, $periodeTahun) {
+                $mulai = Carbon::createFromDate($t->periode_tahun, $t->periode_bulan, 1)->startOfDay();
+                $akhir = $mulai->copy()->addMonthsNoOverflow(max(1, (int) $t->jumlah_bulan))->subMonth()->endOfDay();
+                $target = Carbon::createFromDate($periodeTahun, $periodeBulan, 1)->startOfDay();
+
+                return $target->between($mulai, $akhir);
+            });
+    }
+
+    private function hariPenagihan(LayananInternet $layanan): int
+    {
+        $hari = $layanan->pelanggan?->tanggal_tagihan;
+
+        return $hari >= 1 && $hari <= 31 ? $hari : 20;
+    }
+
     private function hitungTanggalJatuhTempo(LayananInternet $layanan, int $bulan, int $tahun): string
     {
-        $hariAktif = Carbon::parse($layanan->tanggal_aktif)->day;
+        $hariPenagihan = $this->hariPenagihan($layanan);
         $jumlahHariDiBulanTujuan = Carbon::createFromDate($tahun, $bulan, 1)->daysInMonth;
 
-        $hari = min($hariAktif, $jumlahHariDiBulanTujuan);
+        $hari = min($hariPenagihan, $jumlahHariDiBulanTujuan);
 
         return Carbon::createFromDate($tahun, $bulan, $hari)->toDateString();
     }

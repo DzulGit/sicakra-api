@@ -30,6 +30,8 @@ class LayananInternet extends Model
         'longitude',
         'status',
         'tanggal_aktif',
+        'bebas_tagihan_bulan',
+        'tanggal_mulai_penagihan',
     ];
 
     protected $casts = [
@@ -39,7 +41,27 @@ class LayananInternet extends Model
         'longitude' => 'decimal:7',
         'harga_custom' => 'decimal:2',
         'tanggal_aktif' => 'date',
+        'bebas_tagihan_bulan' => 'integer',
+        'tanggal_mulai_penagihan' => 'date',
     ];
+
+    protected $appends = ['masa_aktif_berakhir'];
+
+    public function getMasaAktifBerakhirAttribute(): ?string
+    {
+        if ($this->status !== StatusLayananEnum::AKTIF) {
+            return null;
+        }
+
+        // Masa aktif = tanggal mulai penagihan berikutnya (gudang yang sudah dibayar
+        // lunas melewati tanggal_mulai_penagihan). Tanpa tanggal awal, fallback ke
+        // tanggal_aktif agar UI tetap menampilkan sesuatu.
+        if ($this->tanggal_mulai_penagihan) {
+            return $this->tanggal_mulai_penagihan->copy()->subDay()->toDateString();
+        }
+
+        return $this->tanggal_aktif?->toDateString();
+    }
 
     public function permohonanAsal(): BelongsTo
     {

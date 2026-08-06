@@ -16,6 +16,7 @@ class Pembayaran extends Model
     protected $fillable = [
         'tagihan_id',
         'metode_pembayaran',
+        'dibayar_oleh',
         'jumlah_dibayar',
         'referensi_xendit',
         'status',

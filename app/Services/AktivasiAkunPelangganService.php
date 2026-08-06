@@ -33,10 +33,14 @@ class AktivasiAkunPelangganService
         // (JANGAN Hash::make() manual di sini, nanti ke-hash dua kali dan
         // login akan selalu gagal). Username boleh diubah sendiri nanti oleh
         // pelanggan lewat halaman Profil; ini cuma nilai awal.
+        //
+        // tanggal_tagihan default diambil dari tanggal aktivasi (hari install),
+        // jadi siklus penagihan mulai konsisten dengan tanggal aktif layanan.
         $pelanggan->update([
             'nomor_pelanggan' => $nomorPelanggan,
             'username' => $nomorPelanggan,
             'password' => $nomorPelanggan,
+            'tanggal_tagihan' => now()->day,
         ]);
 
         return $pelanggan->fresh();

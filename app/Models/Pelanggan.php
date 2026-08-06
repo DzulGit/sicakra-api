@@ -22,17 +22,19 @@ class Pelanggan extends Authenticatable
         'email',
         'password',
         'password_sudah_dibuat',
+        'tanggal_tagihan',
         'foto_ktp',
         'foto_selfie_ktp',
     ];
 
-    protected $hidden = [
-        'password',
-    ];
-
     protected $casts = [
         'password_sudah_dibuat' => 'boolean',
+        'tanggal_tagihan' => 'integer',
         'password' => 'hashed',
+    ];
+
+    protected $hidden = [
+        'password',
     ];
 
     // Catatan: password default (= nomor_pelanggan) TIDAK di-set di sini,
