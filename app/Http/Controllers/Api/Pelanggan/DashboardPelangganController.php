@@ -64,6 +64,7 @@ class DashboardPelangganController extends Controller
                     'kecepatan_mbps' => $l->paketInternet?->kecepatan_mbps ?? $l->kecepatan_custom_mbps,
                     'status' => $l->status,
                     'alamat_pemasangan' => $l->alamat_pemasangan,
+                    'masa_aktif_berakhir' => $l->masa_aktif_berakhir,
                 ]),
                 'tagihan_terbaru' => $tagihan->map(fn ($t) => [
                     'id' => $t->id,

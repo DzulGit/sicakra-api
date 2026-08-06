@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Webhook;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
-use App\Models\Pembayaran;
 use App\Models\Tagihan;
+use App\Services\SiklusPenagihanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,11 +14,18 @@ use Illuminate\Support\Facades\Log;
 
 class XenditWebhookController
 {
+    public function __construct(
+        private readonly SiklusPenagihanService $siklusPenagihanService,
+    ) {}
+
     public function __invoke(Request $request): JsonResponse
     {
+        // Debug: cek di storage/logs/laravel.log apakah payload Xendit benar-benar masuk.
+        Log::info('Xendit webhook masuk', ['payload' => $request->all()]);
+
         $token = $request->header('X-Callback-Token');
 
-        if (!$token || !hash_equals(config('services.xendit.webhook_verification_token'), $token)) {
+        if (! $token || ! hash_equals(config('services.xendit.webhook_verification_token'), $token)) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
@@ -36,13 +43,13 @@ class XenditWebhookController
         // di Xendit). Strip suffix itu agar lookup nomor tagihan tetap cocok.
         $nomorTagihan = $nomorTagihan ? preg_replace('/-\d+$/', '', $nomorTagihan) : null;
 
-        if (!$nomorTagihan) {
+        if (! $nomorTagihan) {
             return response()->json(['message' => 'Invalid external_id'], 400);
         }
 
         $tagihan = Tagihan::where('nomor_tagihan', $nomorTagihan)->first();
 
-        if (!$tagihan) {
+        if (! $tagihan) {
             return response()->json(['message' => 'Tagihan not found'], 404);
         }
 
@@ -59,7 +66,7 @@ class XenditWebhookController
             ]);
         };
 
-        DB::transaction(function () use ($tagihan, $payload, $status, $simpanPembayaran) {
+        DB::transaction(function () use ($tagihan, $status, $simpanPembayaran) {
             $pembayaran = $simpanPembayaran();
 
             if ($status === 'PAID' || $status === 'SETTLED') {
@@ -77,6 +84,10 @@ class XenditWebhookController
                     $layanan->update([
                         'tanggal_aktif' => $layanan->tanggal_aktif->copy()->addMonths($tagihan->jumlah_bulan),
                     ]);
+
+                    // Jadwal penagihan dimajukan ke periode pertama yang belum terbayar,
+                    // supaya cron tidak tagih ulang bulan yang sudah dilunasi di muka.
+                    $this->siklusPenagihanService->majukanJadwalSetelahPembayaran($tagihan);
                 }
 
                 PembayaranBerhasil::dispatch($tagihan, $pembayaran);

@@ -58,9 +58,20 @@ class TagihanSayaController extends Controller
 
         $jumlahBulan = $validated['jumlah_bulan'] ?? 1;
 
-        if ($jumlahBulan > 1) {
-            $totalBaru = $tagihan->harga_snapshot * $jumlahBulan;
-            $tagihan->update(['jumlah_bulan' => $jumlahBulan, 'total_tagihan' => $totalBaru]);
+        // TAHAP 4: mengubah jumlah bulan = fungsi "regenerate/ubah bulan" —
+        // dibatasi maksimal 3x per invoice.
+        $ubahBulan = $jumlahBulan !== (int) $tagihan->jumlah_bulan;
+
+        if ($ubahBulan && $tagihan->retry_count >= 3) {
+            return response()->json(['message' => 'Batas perubahan tagihan tercapai. Silakan hubungi Admin Keuangan.'], 422);
+        }
+
+        if ($ubahBulan) {
+            $tagihan->update([
+                'jumlah_bulan' => $jumlahBulan,
+                'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
+                'retry_count' => $tagihan->retry_count + 1,
+            ]);
         }
 
         $tagihan->update([

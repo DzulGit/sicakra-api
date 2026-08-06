@@ -2,9 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Enums\StatusLayananEnum;
-use App\Models\LayananInternet;
-use App\Services\GenerateTagihanService;
+use App\Services\SiklusPenagihanService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -22,21 +20,20 @@ class GenerateTagihanMassalJob implements ShouldQueue
         private readonly int $periodeTahun,
     ) {}
 
-    public function handle(GenerateTagihanService $generateTagihanService): void
+    public function handle(SiklusPenagihanService $siklusPenagihanService): void
     {
-        LayananInternet::where('status', StatusLayananEnum::AKTIF)
-            ->chunkById(100, function ($kumpulanLayanan) use ($generateTagihanService) {
-                foreach ($kumpulanLayanan as $layanan) {
-                    try {
-                        $generateTagihanService->generateUntukLayanan(
-                            $layanan,
-                            $this->periodeBulan,
-                            $this->periodeTahun
-                        );
-                    } catch (\Throwable $e) {
-                        Log::error("Gagal generate tagihan untuk layanan #{$layanan->id}: {$e->getMessage()}");
-                    }
-                }
-            });
+        // $periodeBulan/$periodeTahun lama bersifat global; dengan siklus
+        // anniversary per-pelanggan, periode tagihan diambil dari jadwal masing-masing.
+        // Nama argumen dipertahankan supaya job antrean lama tetap aman di-skip.
+        if ($this->periodeBulan > 0 || $this->periodeTahun > 0) {
+            Log::warning('GenerateTagihanMassalJob dengan periode eksplisit (legacy) diabaikan; prosesId via siklus.');
+        }
+
+        try {
+            $diproses = $siklusPenagihanService->prosesHariIni();
+            Log::info("GenerateTagihanMassalJob: {$diproses} layanan diproses hari ini.");
+        } catch (\Throwable $e) {
+            Log::error("Gagal GenerateTagihanMassalJob: {$e->getMessage()}");
+        }
     }
 }

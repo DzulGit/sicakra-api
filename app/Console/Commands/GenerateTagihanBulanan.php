@@ -9,7 +9,7 @@ class GenerateTagihanBulanan extends Command
 {
     protected $signature = 'tagihan:generate-bulanan';
 
-    protected $description = 'Dispatch job generate tagihan untuk semua layanan yang tanggal_aktif-nya jatuh hari ini';
+    protected $description = 'Dispatch job generate tagihan untuk layanan yang jadwal penagihannya jatuh hari ini (siklus anniversary)';
 
     public function handle(): void
     {
