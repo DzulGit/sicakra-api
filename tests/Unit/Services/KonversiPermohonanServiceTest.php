@@ -58,6 +58,47 @@ class KonversiPermohonanServiceTest extends TestCase
         $this->assertStringStartsWith('PLG', $permohonan->pelanggan->nomor_pelanggan);
     }
 
+    public function test_konversi_pemasangan_baru_terapkan_promo_gratis_dari_paket(): void
+    {
+        $paket = \App\Models\PaketInternet::factory()->create(['promo_gratis_bulan' => 1]);
+
+        $permohonan = PermohonanLayanan::factory()->create([
+            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
+            'paket_internet_id' => $paket->id,
+            'tipe_paket' => 'reguler',
+        ]);
+
+        $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
+
+        $this->assertEquals(1, $layanan->bebas_tagihan_bulan);
+        // Jadwal tagihan pertama dimundurkan sesuai promo: aktivasi + (1 + promo) bulan.
+        $this->assertEquals(
+            now()->startOfDay()->addMonthsNoOverflow(2)->toDateString(),
+            $layanan->tanggal_mulai_penagihan->toDateString(),
+        );
+    }
+
+    public function test_konversi_pemasangan_baru_paket_tanpa_promo_tetap_ditagih_bulan_depan(): void
+    {
+        $paket = \App\Models\PaketInternet::factory()->create(['promo_gratis_bulan' => 0]);
+
+        $permohonan = PermohonanLayanan::factory()->create([
+            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
+            'status' => StatusPermohonanEnum::DIJADWALKAN,
+            'paket_internet_id' => $paket->id,
+            'tipe_paket' => 'reguler',
+        ]);
+
+        $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
+
+        $this->assertEquals(0, $layanan->bebas_tagihan_bulan);
+        $this->assertEquals(
+            now()->startOfDay()->addMonthsNoOverflow(1)->toDateString(),
+            $layanan->tanggal_mulai_penagihan->toDateString(),
+        );
+    }
+
     public function test_konversi_pemasangan_baru_langsung_generate_tagihan_bulan_ini(): void
     {
         $permohonan = PermohonanLayanan::factory()->create([
