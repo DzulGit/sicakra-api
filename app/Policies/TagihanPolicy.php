@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\PeranAdminEnum;
+use App\Enums\StatusPembayaranEnum;
 use App\Models\Admin;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
@@ -39,5 +40,15 @@ class TagihanPolicy
         // Data tagihan tidak boleh diubah manual sama sekali — jaga integritas snapshot billing.
         // Sesuai requirement: Keuangan tidak boleh mengubah data.
         return false;
+    }
+
+    /**
+     * Generate ulang / ubah jumlah bulan tagihan. Khusus Keuangan / Super Admin,
+     * dan hanya untuk tagihan yang BELUM dibayar (yang sudah lunas tak bisa diubah).
+     */
+    public function regenerate(Admin $admin, Tagihan $tagihan): bool
+    {
+        return in_array($admin->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true)
+            && $tagihan->status_pembayaran !== StatusPembayaranEnum::SUDAH_BAYAR;
     }
 }

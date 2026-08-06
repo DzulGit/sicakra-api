@@ -99,6 +99,7 @@ Route::prefix('admin')->group(function () {
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
             Route::post('tagihan/generate/{pelanggan}', [KeuanganTagihanController::class, 'generateUntukPelanggan']);
+            Route::post('tagihan/{tagihan}/regenerate', [KeuanganTagihanController::class, 'regenerate']);
         });
 
         // ----- Super Admin -----

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Keuangan;
 
 use App\Enums\StatusLayananEnum;
+use App\Enums\StatusPembayaranEnum;
 use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
@@ -56,10 +57,19 @@ class TagihanController extends Controller
     /**
      * Generate manual tagihan bulan berjalan untuk semua layanan aktif milik
      * pelanggan. Idempotent — layanan yang tagihan periodenya sudah ada di-skip.
+     *
+     * Bisa request beberapa bulan sekaligus lewat `jumlah_bulan` (1-12),
+     * total tagihan = harga * jumlah_bulan.
      */
-    public function generateUntukPelanggan(Pelanggan $pelanggan)
+    public function generateUntukPelanggan(Request $request, Pelanggan $pelanggan)
     {
         $this->authorize('create', Tagihan::class);
+
+        $validated = $request->validate([
+            'jumlah_bulan' => 'sometimes|integer|min:1|max:12',
+        ]);
+
+        $jumlahBulan = $validated['jumlah_bulan'] ?? 1;
 
         $layananAktif = $pelanggan->layananInternet()
             ->where('status', StatusLayananEnum::AKTIF)
@@ -76,6 +86,7 @@ class TagihanController extends Controller
                 $layanan,
                 now()->month,
                 now()->year,
+                $jumlahBulan,
             );
 
             if ($tagihan) {
@@ -84,13 +95,43 @@ class TagihanController extends Controller
         }
 
         if (empty($tagihanDibuat)) {
-            return response()->json(['message' => 'Tagihan bulan ini sudah ada untuk semua layanan.'], 422);
+            return response()->json([
+                'message' => $jumlahBulan > 1
+                    ? "Tagihan {$jumlahBulan} bulan ini sudah ada untuk semua layanan."
+                    : 'Tagihan bulan ini sudah ada untuk semua layanan.',
+            ], 422);
         }
 
         return response()->json([
             'message' => 'Tagihan berhasil dibuat.',
             'data' => $tagihanDibuat,
         ], 201);
+    }
+
+    /**
+     * Generate ulang / ubah jumlah bulan dari sebuah tagihan yang belum dibayar
+     * (mis. semula 1 bulan, pelanggan berubah pikiran mau 12 bulan — atau sebaliknya).
+     * Total tagihan ikut mengikuti = harga_snapshot * jumlah_bulan.
+     */
+    public function regenerate(Request $request, Tagihan $tagihan)
+    {
+        $this->authorize('regenerate', $tagihan);
+
+        $validated = $request->validate([
+            'jumlah_bulan' => 'required|integer|min:1|max:12',
+        ]);
+
+        $jumlahBulan = $validated['jumlah_bulan'];
+
+        $tagihan->update([
+            'jumlah_bulan' => $jumlahBulan,
+            'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
+        ]);
+
+        return response()->json([
+            'message' => 'Tagihan berhasil di-generate ulang.',
+            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+        ]);
     }
 
     // Sengaja TIDAK ADA store()/update() — selain generate manual di atas,
