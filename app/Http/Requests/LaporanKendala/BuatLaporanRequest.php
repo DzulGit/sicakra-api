@@ -17,12 +17,12 @@ class BuatLaporanRequest extends FormRequest
         return [
             'layanan_internet_id' => [
                 'required',
-                // Pastikan layanan yang dilaporkan benar-benar milik pelanggan yang login
                 Rule::exists('layanan_internet', 'id')->where('pelanggan_id', $this->user()->id),
             ],
             'kategori_kendala' => ['required', 'string', 'max:255'],
             'deskripsi' => ['required', 'string'],
-            'foto' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'foto' => ['nullable', 'array'],
+            'foto.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ];
     }
 }

@@ -24,14 +24,19 @@ class LaporanKendalaService
             $data['nomor_laporan'] = $this->generatorNomor->generate(LaporanKendala::class, 'nomor_laporan', 'LPR');
             $data['status'] = StatusLaporanEnum::MENUNGGU;
 
-            if (isset($data['foto'])) {
-                $data['foto'] = $data['foto']->store('laporan-kendala', 's3');
+            if (isset($data['foto']) && is_array($data['foto'])) {
+                $paths = [];
+                foreach ($data['foto'] as $file) {
+                    $paths[] = $file->store('laporan-kendala', 's3');
+                }
+                
+                // Simpan sebagai JSON agar mendukung banyak gambar
+                $data['foto'] = json_encode($paths); 
             }
 
             return $this->laporanKendalaRepository->create($data);
         });
     }
-
     public function terima(LaporanKendala $laporan): LaporanKendala
     {
         return $this->ubahStatus($laporan, StatusLaporanEnum::DIPROSES);
