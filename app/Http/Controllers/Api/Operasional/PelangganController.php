@@ -37,6 +37,35 @@ class PelangganController extends Controller
     /**
      * Atur tanggal_tagihan 1 pelanggan secara manual (flexibel, per pelanggan).
      */
+    /**
+     * Reset username & password pelanggan oleh Admin Operasional (antisipasi
+     * pelanggan lupa kedua-duanya). Username dan password di-set SAMA, nilainya
+     * 6 karakter acak: huruf kecil/besar + angka, tanpa karakter ambigu
+     * (i I l L o O 0 1) biar aman diketik ulang.
+     * Username & password baru dikembalikan sekali ini saja, lalu diserahkan
+     * ke pelanggan.
+     */
+    public function resetUsernamePassword(Pelanggan $pelanggan)
+    {
+        $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+        $nilai = '';
+        $maks = strlen($alphabet) - 1;
+        for ($i = 0; $i < 6; $i++) {
+            $nilai .= $alphabet[random_int(0, $maks)];
+        }
+
+        $pelanggan->update([
+            'username' => $nilai,
+            'password' => $nilai, // auto-hash via cast 'hashed'
+            'password_sudah_dibuat' => true,
+        ]);
+
+        return response()->json([
+            'message' => 'Username & password pelanggan berhasil di-reset.',
+            'data' => ['username' => $nilai, 'password' => $nilai],
+        ]);
+    }
+
     public function aturTanggalTagihan(Request $request, Pelanggan $pelanggan)
     {
         $validated = $request->validate([
