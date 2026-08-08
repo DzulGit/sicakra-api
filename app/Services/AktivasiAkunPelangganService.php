@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Pelanggan;
+use App\Notifications\AkunDiaktifkanNotification;
 
 class AktivasiAkunPelangganService
 {
@@ -42,6 +43,10 @@ class AktivasiAkunPelangganService
             'password' => $nomorPelanggan,
             'tanggal_tagihan' => now()->day,
         ]);
+
+        if ($pelanggan->email) {
+            $pelanggan->notify(new AkunDiaktifkanNotification($pelanggan->fresh()));
+        }
 
         return $pelanggan->fresh();
     }

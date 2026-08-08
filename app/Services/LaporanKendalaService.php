@@ -7,6 +7,9 @@ use App\Exceptions\TransisiStatusTidakValidException;
 use App\Models\Admin;
 use App\Models\LaporanKendala;
 use App\Models\Pelanggan;
+use App\Notifications\LaporanKendalaDitugaskanNotification;
+use App\Notifications\LaporanKendalaDiterimaNotification;
+use App\Notifications\LaporanKendalaStatusNotification;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -39,34 +42,58 @@ class LaporanKendalaService
     }
     public function terima(LaporanKendala $laporan): LaporanKendala
     {
-        return $this->ubahStatus($laporan, StatusLaporanEnum::DIPROSES);
+        $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::DIPROSES);
+
+        $laporan->layananInternet?->pelanggan?->notify(
+            new LaporanKendalaDiterimaNotification($laporan)
+        );
+
+        return $laporan;
     }
 
     public function teruskanKeTeknisi(LaporanKendala $laporan, Admin $teknisiTujuan): LaporanKendala
     {
         $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::DITUGASKAN);
 
-        return $this->laporanKendalaRepository->update($laporan, [
+        $laporan = $this->laporanKendalaRepository->update($laporan, [
             'ditugaskan_ke' => $teknisiTujuan->id,
         ]);
+
+        if ($teknisiTujuan->email) {
+            $teknisiTujuan->notify(new LaporanKendalaDitugaskanNotification($laporan));
+        }
+
+        return $laporan;
     }
 
     public function selesaikan(LaporanKendala $laporan, string $hasilPenanganan): LaporanKendala
     {
         $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::SELESAI);
 
-        return $this->laporanKendalaRepository->update($laporan, [
+        $laporan = $this->laporanKendalaRepository->update($laporan, [
             'hasil_penanganan' => $hasilPenanganan,
         ]);
+
+        $laporan->layananInternet?->pelanggan?->notify(
+            new LaporanKendalaStatusNotification($laporan, StatusLaporanEnum::SELESAI, $hasilPenanganan)
+        );
+
+        return $laporan;
     }
 
     public function tutup(LaporanKendala $laporan, Admin $operasional): LaporanKendala
     {
         $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::DITUTUP);
 
-        return $this->laporanKendalaRepository->update($laporan, [
+        $laporan = $this->laporanKendalaRepository->update($laporan, [
             'ditutup_oleh' => $operasional->id,
         ]);
+
+        $laporan->layananInternet?->pelanggan?->notify(
+            new LaporanKendalaStatusNotification($laporan, StatusLaporanEnum::DITUTUP)
+        );
+
+        return $laporan;
     }
 
     private function ubahStatus(LaporanKendala $laporan, StatusLaporanEnum $statusBaru): LaporanKendala

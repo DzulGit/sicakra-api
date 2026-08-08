@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Auth\AuthAdminController;
 use App\Http\Controllers\Api\Auth\AuthPelangganController;
+use App\Http\Controllers\Api\Auth\LupaPasswordController;
 use App\Http\Controllers\Api\Keuangan\DashboardKeuanganController;
 use App\Http\Controllers\Api\Keuangan\PendapatanController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
@@ -123,6 +124,11 @@ Route::prefix('admin')->group(function () {
 Route::prefix('pelanggan')->group(function () {
     Route::post('login', [AuthPelangganController::class, 'login'])
         ->name('login')
+        ->middleware('throttle:login');
+
+    Route::post('lupa-password', [LupaPasswordController::class, 'kirimLink'])
+        ->middleware('throttle:login');
+    Route::post('reset-password', [LupaPasswordController::class, 'reset'])
         ->middleware('throttle:login');
 
     Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan'])->group(function () {

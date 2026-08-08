@@ -12,6 +12,7 @@ use App\Http\Requests\PermohonanLayanan\JadwalkanKerjaRequest;
 use App\Http\Requests\PermohonanLayanan\VerifikasiDanJadwalkanRequest;
 use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
+use App\Notifications\PermohonanStatusNotification;
 use App\Repositories\Contracts\JadwalKerjaRepositoryInterface;
 use App\Repositories\Contracts\PermohonanLayananRepositoryInterface;
 use App\Services\JadwalKerjaService;
@@ -124,6 +125,12 @@ class PermohonanLayananController extends Controller
             ]);
         }
 
+        $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
+            $permohonan,
+            $statusBaru,
+            $data['catatan'] ?? null,
+        ));
+
         return response()->json(['data' => $permohonan]);
     }
     
@@ -172,6 +179,12 @@ class PermohonanLayananController extends Controller
                     'Jadwal kerja dibuat langsung setelah verifikasi.'
                 );
 
+                $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
+                    $permohonan,
+                    StatusPermohonanEnum::DIJADWALKAN,
+                    $data['catatan'] ?? null,
+                ));
+
                 return response()->json([
                     'data' => [
                         'permohonan' => $permohonan->fresh()->load(['pelanggan', 'paketInternet', 'riwayatStatus', 'jadwalKerja']),
@@ -179,6 +192,12 @@ class PermohonanLayananController extends Controller
                     ],
                 ], 201);
             }
+
+            $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
+                $permohonan,
+                $statusBaru,
+                $data['catatan'] ?? null,
+            ));
 
             return response()->json(['data' => $permohonan]);
         });
@@ -200,6 +219,12 @@ class PermohonanLayananController extends Controller
             $request->user(),
             $request->validated('tim_teknisi_id'),
         );
+
+        $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
+            $permohonan,
+            StatusPermohonanEnum::DIJADWALKAN,
+            'Jadwal kunjungan teknisi: ' . now()->parse($request->validated('tanggal_kerja'))->format('d M Y'),
+        ));
 
         return response()->json(['data' => $jadwal], 201);
     }
