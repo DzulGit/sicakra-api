@@ -41,4 +41,8 @@ return [
         'mode' => env('XENDIT_MODE', 'test'),
         'invoice_duration' => 259200,
     ],
+
+    'frontend' => [
+        'url' => env('FRONTEND_URL', 'http://localhost:5173'),
+    ],
 ];

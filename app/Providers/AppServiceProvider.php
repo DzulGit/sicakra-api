@@ -75,5 +75,15 @@ class AppServiceProvider extends ServiceProvider
             \App\Events\TagihanDibuat::class,
             \App\Listeners\BuatInvoiceXendit::class,
         );
+
+        Event::listen(
+            \App\Events\TagihanDibuat::class,
+            \App\Listeners\KirimNotifikasiTagihanDibuat::class,
+        );
+
+        Event::listen(
+            \App\Events\PembayaranBerhasil::class,
+            \App\Listeners\KirimNotifikasiTagihanLunas::class,
+        );
     }
 }
