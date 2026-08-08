@@ -90,10 +90,33 @@ class PaketInternetSeeder extends Seeder
                 'deskripsi' => 'Paket internet tercepat untuk perusahaan besar dan pengguna yang membutuhkan bandwidth tinggi.',
                 'status_aktif' => true,
             ],
+
+            // ----- Paket promo (free trial 1 bulan pertama gratis) -----
+            [
+                'nama_paket' => 'Paket Cepat Promo 1 Bulan',
+                'kecepatan_mbps' => 100,
+                'harga' => 150000,
+                'jumlah_perangkat' => 15,
+                'deskripsi' => 'Internet cepat 100 Mbps — bulan pertama GRATIS, bayar mulai bulan kedua.',
+                'status_aktif' => true,
+                'promo_gratis_bulan' => 1,
+            ],
+            [
+                'nama_paket' => 'Paket Family Promo 1 Bulan',
+                'kecepatan_mbps' => 50,
+                'harga' => 90000,
+                'jumlah_perangkat' => 8,
+                'deskripsi' => 'Cocok untuk keluarga kecil — 50 Mbps dengan 1 bulan gratis.',
+                'status_aktif' => true,
+                'promo_gratis_bulan' => 1,
+            ],
         ];
 
         foreach ($paket as $data) {
-            PaketInternet::create($data);
+            PaketInternet::updateOrCreate(
+                ['nama_paket' => $data['nama_paket']],
+                array_merge($data, ['promo_gratis_bulan' => $data['promo_gratis_bulan'] ?? 0]),
+            );
         }
     }
 }
