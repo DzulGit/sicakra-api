@@ -17,7 +17,7 @@ class SimpanPendaftaranRequest extends FormRequest
             'nama_lengkap' => ['required', 'string', 'max:255'],
             'nik' => ['required', 'string', 'size:16', 'unique:pelanggan,nik'],
             'nomor_hp' => ['required', 'string', 'max:20', 'unique:pelanggan,nomor_hp'],
-            'email' => ['nullable', 'email'],
+            'email' => ['required', 'email'],
 
             'alamat_pemasangan' => ['required', 'string'],
             'detail_alamat' => ['nullable', 'string'],

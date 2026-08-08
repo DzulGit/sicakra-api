@@ -66,17 +66,32 @@ class JadwalKerjaService
         HasilKerjaEnum $hasil,
         ?string $catatanKendala,
         Admin $teknisi,
+        array $fotoDokumentasi = [],
+        ?float $latitudeHasil = null,
+        ?float $longitudeHasil = null,
     ): array {
-        return DB::transaction(function () use ($jadwal, $hasil, $catatanKendala, $teknisi) {
+        return DB::transaction(function () use ($jadwal, $hasil, $catatanKendala, $teknisi, $fotoDokumentasi, $latitudeHasil, $longitudeHasil) {
             $jadwal = $this->jadwalKerjaRepository->update($jadwal, [
                 'hasil' => $hasil,
                 'catatan_kendala' => $catatanKendala,
+                'foto_dokumentasi' => $fotoDokumentasi ?: null,
+                'latitude_hasil' => $latitudeHasil,
+                'longitude_hasil' => $longitudeHasil,
                 'diisi_oleh' => $teknisi->id,
             ]);
 
             $permohonan = $jadwal->permohonanLayanan;
 
             if ($hasil === HasilKerjaEnum::SELESAI) {
+                // Titik koordinat aktual dari lokasi — dipakai sebagai dasar
+                // layanan & riwayat (mis. relokasi) agar akurat bukan copy alamat.
+                if ($latitudeHasil !== null && $longitudeHasil !== null) {
+                    $permohonan->update([
+                        'latitude' => $latitudeHasil,
+                        'longitude' => $longitudeHasil,
+                    ]);
+                }
+
                 $layanan = $this->konversiPermohonanService->konversi($permohonan, $teknisi);
                 $layanan->load(['pelanggan', 'paketInternet']);
 

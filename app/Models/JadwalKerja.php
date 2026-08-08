@@ -20,12 +20,18 @@ class JadwalKerja extends Model
         'tanggal_kerja',
         'hasil',
         'catatan_kendala',
+        'foto_dokumentasi',
+        'latitude_hasil',
+        'longitude_hasil',
         'diisi_oleh',
     ];
 
     protected $casts = [
         'hasil' => HasilKerjaEnum::class,
         'tanggal_kerja' => 'date',
+        'foto_dokumentasi' => 'array',
+        'latitude_hasil' => 'decimal:7',
+        'longitude_hasil' => 'decimal:7',
     ];
 
     public function permohonanLayanan(): BelongsTo

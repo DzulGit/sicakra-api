@@ -31,7 +31,7 @@ class JadwalKerjaController extends Controller
 
         $jadwal = $this->jadwalKerjaRepository->find(
             $jadwalKerja->id,
-            ['permohonanLayanan.pelanggan', 'teknisi', 'timTeknisi']
+            ['permohonanLayanan.pelanggan', 'permohonanLayanan.paketInternet', 'teknisi', 'timTeknisi']
         );
 
         return response()->json(['data' => $jadwal]);
@@ -44,11 +44,19 @@ class JadwalKerjaController extends Controller
 
         $data = $request->validated();
 
+        $fotoDokumentasi = [];
+        foreach ($request->file('foto_dokumentasi', []) as $file) {
+            $fotoDokumentasi[] = $file->store('dokumentasi-pekerjaan', 's3');
+        }
+
         $hasil = $this->jadwalKerjaService->isiHasil(
             $jadwalKerja,
             HasilKerjaEnum::from($data['hasil']),
             $data['catatan_kendala'] ?? null,
             $request->user(),
+            $fotoDokumentasi,
+            isset($data['latitude_hasil']) ? (float) $data['latitude_hasil'] : null,
+            isset($data['longitude_hasil']) ? (float) $data['longitude_hasil'] : null,
         );
 
         return response()->json(['data' => $hasil]);
