@@ -50,6 +50,7 @@ class PendaftaranTest extends TestCase
             'nama_lengkap' => 'Siti Aminah',
             'nik' => '9999888877776666',
             'nomor_hp' => '087777777777',
+            'email' => 'siti@example.com',
             'alamat_pemasangan' => 'Jl. Sudirman No. 5',
             'rt' => '003',
             'rw' => '004',
@@ -81,6 +82,7 @@ class PendaftaranTest extends TestCase
             'nama_lengkap' => 'Budi Santoso',
             'nik' => '1234567890123456',
             'nomor_hp' => '089999999999',
+            'email' => 'budi@example.com',
             'alamat_pemasangan' => 'Jl. Merdeka No. 1',
             'rt' => '001',
             'rw' => '002',
@@ -105,7 +107,7 @@ class PendaftaranTest extends TestCase
             'nama_lengkap' => 'Budi Santoso',
             'nik' => '1111222233334444',
             'nomor_hp' => '081111222233',
-            'email' => 'budi@example.com',
+            'email' => 'budi2@example.com',
             'alamat_pemasangan' => 'Jl. Merdeka No. 1',
             'rt' => '001',
             'rw' => '002',
@@ -130,6 +132,7 @@ class PendaftaranTest extends TestCase
             'nama_lengkap' => 'Budi Santoso',
             'nik' => '9999888877776666',
             'nomor_hp' => '089999999999',
+            'email' => 'budi@example.com',
             'alamat_pemasangan' => 'Jl. Merdeka No. 1',
             'rt' => '001',
             'rw' => '002',
@@ -143,5 +146,28 @@ class PendaftaranTest extends TestCase
         ]);
 
         $response->assertStatus(422)->assertJsonValidationErrors('foto_ktp');
+    }
+
+    public function test_pendaftaran_gagal_tanpa_email(): void
+    {
+        Storage::fake('s3');
+
+        $response = $this->postJson('/api/pendaftaran', [
+            'nama_lengkap' => 'Budi Santoso',
+            'nik' => '9999888877776666',
+            'nomor_hp' => '089999999999',
+            'alamat_pemasangan' => 'Jl. Merdeka No. 1',
+            'rt' => '001',
+            'rw' => '002',
+            'kode_pos' => '50000',
+            'latitude' => -6.2,
+            'longitude' => 106.8,
+            'tipe_paket' => 'custom',
+            'nama_paket_custom' => 'Custom',
+            'kecepatan_custom_mbps' => 50,
+            'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('email');
     }
 }
