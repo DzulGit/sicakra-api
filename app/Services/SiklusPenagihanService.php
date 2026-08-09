@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Log;
  * Siklus penagihan bulanan "Anniversary / Snap to End of Month".
  *
  * - Hari dasar = tanggal_tagihan pelanggan (diambil dari tanggal aktivasi).
- * - Tanggal mulai penagihan = tanggal_aktif + (1 + bebas_tagihan_bulan) bulan.
+ * - Tanggal mulai penagihan = tanggal_aktif + bebas_tagihan_bulan bulan.
+ *   bebas_tagihan_bulan = 0 → tagihan pertama terbit di bulan aktivasi.
  * - Snap: kalau hari dasar (mis. 31) melebihi jumlah hari bulan target, jatuh ke
  *   hari terakhir bulan tersebut; bulan 31-hari berikutnya otomatis kembali ke 31.
  */
@@ -22,7 +23,7 @@ class SiklusPenagihanService
         private readonly GenerateTagihanService $generateTagihanService,
     ) {}
 
-    /** Tanggal penagihan berbayar pertama = aktivasi + (1 + bebas_tagihan_bulan), snap. */
+    /** Tanggal penagihan pertama = aktivasi + bebas_tagihan_bulan, snap. bebas=0 → bulan aktivasi. */
     public function tanggalMulaiPenagihan(LayananInternet $layanan): ?Carbon
     {
         if (! $layanan->tanggal_aktif) {
@@ -30,7 +31,7 @@ class SiklusPenagihanService
         }
 
         $mulai = Carbon::parse($layanan->tanggal_aktif)
-            ->addMonthsNoOverflow(1 + (int) $layanan->bebas_tagihan_bulan);
+            ->addMonthsNoOverflow((int) $layanan->bebas_tagihan_bulan);
 
         return $this->snapKeBulan($mulai, $this->hariDasar($layanan));
     }
@@ -53,9 +54,11 @@ class SiklusPenagihanService
     }
 
     /**
-     * Set jadwal awal saat layanan baru diaktifkan. Kalau hasilnya sudah lewat
-     * (mis. admin mengubah bebas_tagihan_bulan di kemudian hari), digulir ke siklus
-     * berikutnya supaya tidak berhenti ditagih.
+     * Set jadwal awal saat layanan baru diaktifkan. Bila tagihan pertama jatuh
+     * tempo hari ini (bebas_tagihan_bulan = 0), generate langsung — jangan
+     * menunggu cron harian yang mungkin sudah lewat hari ini. Kalau hasilnya
+     * sudah lewat (mis. admin mengubah bebas_tagihan_bulan di kemudian hari),
+     * digulir ke siklus berikutnya supaya tidak berhenti ditagih.
      */
     public function aturJadwalAwal(LayananInternet $layanan): void
     {
@@ -70,7 +73,11 @@ class SiklusPenagihanService
             $tanggal = $this->siklusBerikutnya($layanan, $tanggal);
         }
 
-        $layanan->update(['tanggal_mulai_penagihan' => $tanggal->toDateString()]);
+        if ($tanggal->lte($hariIni)) {
+            $this->prosesSatuLayanan($layanan, $tanggal);
+        } else {
+            $layanan->update(['tanggal_mulai_penagihan' => $tanggal->toDateString()]);
+        }
     }
 
     /**

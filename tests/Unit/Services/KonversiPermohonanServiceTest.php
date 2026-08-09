@@ -72,14 +72,15 @@ class KonversiPermohonanServiceTest extends TestCase
         $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
 
         $this->assertEquals(1, $layanan->bebas_tagihan_bulan);
-        // Jadwal tagihan pertama dimundurkan sesuai promo: aktivasi + (1 + promo) bulan.
+        // Promo 1 bulan: tagihan pertama dimundurkan 1 bulan dari aktivasi.
+
         $this->assertEquals(
-            now()->startOfDay()->addMonthsNoOverflow(2)->toDateString(),
+            now()->startOfDay()->addMonthsNoOverflow(1)->toDateString(),
             $layanan->tanggal_mulai_penagihan->toDateString(),
         );
     }
 
-    public function test_konversi_pemasangan_baru_paket_tanpa_promo_tetap_ditagih_bulan_depan(): void
+    public function test_konversi_pemasangan_baru_paket_tanpa_promo_langsung_ditagih_bulan_ini(): void
     {
         $paket = \App\Models\PaketInternet::factory()->create(['promo_gratis_bulan' => 0]);
 
@@ -93,6 +94,13 @@ class KonversiPermohonanServiceTest extends TestCase
         $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
 
         $this->assertEquals(0, $layanan->bebas_tagihan_bulan);
+        $this->assertSame(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
+
+        $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->first();
+        $this->assertEquals(now()->month, $tagihan->periode_bulan);
+        $this->assertEquals(now()->year, $tagihan->periode_tahun);
+
+        // Sekali tagihan bulan ini dibuat, jadwal berikutnya maju 1 bulan.
         $this->assertEquals(
             now()->startOfDay()->addMonthsNoOverflow(1)->toDateString(),
             $layanan->tanggal_mulai_penagihan->toDateString(),
