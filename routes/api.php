@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
 use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
 use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
 use App\Http\Controllers\Api\Teknisi\LaporanKendalaController as TeknisiLaporanKendalaController;
+use App\Http\Controllers\Api\Operasional\LaporanKendalaController;
 use Illuminate\Support\Facades\Route;
 
 // ===== PUBLIK (tanpa login) =====
@@ -68,6 +69,8 @@ Route::prefix('admin')->group(function () {
             Route::post('paket-internet', [OperasionalPaketInternetController::class, 'store']);
             Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
             Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
+
+            Route::patch('/laporan-kendala/{laporanKendala}/tindak-lanjut', [LaporanKendalaController::class, 'tindakLanjut']);
         });
 
         // ----- Pelanggan (Operasional + Keuangan) -----

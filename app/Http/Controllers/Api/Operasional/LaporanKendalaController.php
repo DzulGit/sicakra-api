@@ -71,4 +71,20 @@ class LaporanKendalaController extends Controller
 
         return response()->json(['data' => $laporan]);
     }
+
+    public function tindakLanjut(Request $request, LaporanKendala $laporanKendala)
+    {
+        $this->authorize('teruskanKeTeknisi', $laporanKendala);
+
+        $data = $request->validate([
+            'keputusan' => 'required|in:SELESAI_REMOTE,TERUSKAN_TEKNISI',
+            'teknisi_ids' => 'required_if:keputusan,TERUSKAN_TEKNISI|array',
+            'tanggal_kerja' => 'required_if:keputusan,TERUSKAN_TEKNISI|date',
+            'hasil_penanganan' => 'required_if:keputusan,SELESAI_REMOTE|nullable|string',
+        ]);
+
+        $laporan = $this->laporanKendalaService->tindakLanjut($laporanKendala, $data, $request->user());
+
+        return response()->json(['data' => $laporan]);
+    }
 }

@@ -17,7 +17,7 @@ enum StatusLaporanEnum: string
     public function transisiValid(): array
     {
         return match ($this) {
-            self::MENUNGGU => [self::DIPROSES, self::DITUTUP],
+            self::MENUNGGU => [self::DIPROSES, self::DITUGASKAN, self::DITUTUP],
             self::DIPROSES => [self::DITUGASKAN, self::DITUTUP],
             self::DITUGASKAN => [self::SELESAI],
             self::SELESAI => [self::DITUTUP],

@@ -106,4 +106,30 @@ class LaporanKendalaService
 
         return $this->laporanKendalaRepository->update($laporan, ['status' => $statusBaru]);
     }
+
+    public function tindakLanjut(LaporanKendala $laporan, array $data, Admin $operasional): LaporanKendala
+    {
+        return DB::transaction(function () use ($laporan, $data, $operasional) {
+            if ($data['keputusan'] === 'SELESAI_REMOTE') {
+                $laporan = $this->laporanKendalaRepository->update($laporan, [
+                    'hasil_penanganan' => $data['hasil_penanganan'],
+                    'ditutup_oleh' => $operasional->id,
+                ]);
+
+                $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::DITUTUP);
+
+                $laporan->layananInternet?->pelanggan?->notify(
+                    new LaporanKendalaStatusNotification($laporan, StatusLaporanEnum::DITUTUP, $data['hasil_penanganan'])
+                );
+
+                return $laporan;
+            }
+
+            // Ambil teknisi pertama dari array yang dipilih
+            $teknisi = Admin::findOrFail($data['teknisi_ids'][0]);
+            
+            // Simpan tanggal_kerja juga jika tabel database LaporanKendala sudah memiliki kolom tanggal_kerja
+            return $this->teruskanKeTeknisi($laporan, $teknisi);
+        });
+    }
 }
