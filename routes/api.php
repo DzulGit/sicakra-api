@@ -154,6 +154,7 @@ Route::prefix('pelanggan')->group(function () {
         Route::patch('profil', [ProfilController::class, 'update']);
         Route::patch('profil/username', [ProfilController::class, 'ubahUsername']);
         Route::patch('profil/password', [ProfilController::class, 'ubahPassword']);
+        Route::post('profil/foto', [ProfilController::class, 'ubahFoto']);
 
         Route::get('layanan', [LayananSayaController::class, 'index']);
         Route::get('layanan/{layanan}', [LayananSayaController::class, 'show']);
