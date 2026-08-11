@@ -54,4 +54,18 @@ class ProfilController extends Controller
 
         return response()->json(['data' => ['message' => 'Password berhasil diperbarui.']]);
     }
+
+    public function ubahFoto(Request $request)
+    {
+        $request->validate([
+            'foto' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+        ]);
+
+        $pelanggan = $request->user();
+        
+        $path = $request->file('foto')->store('profil', 's3');
+        $pelanggan->update(['foto_profil' => $path]);
+
+        return response()->json(['data' => $pelanggan->fresh()]);
+    }
 }

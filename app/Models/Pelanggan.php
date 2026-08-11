@@ -26,6 +26,7 @@ class Pelanggan extends Authenticatable
         'tanggal_tagihan',
         'foto_ktp',
         'foto_selfie_ktp',
+        'foto_profil',
     ];
 
     protected $casts = [
