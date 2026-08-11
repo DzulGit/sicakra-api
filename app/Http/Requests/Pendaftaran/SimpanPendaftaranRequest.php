@@ -17,7 +17,7 @@ class SimpanPendaftaranRequest extends FormRequest
             'nama_lengkap' => ['required', 'string', 'max:255'],
             'nik' => ['required', 'string', 'size:16', 'unique:pelanggan,nik'],
             'nomor_hp' => ['required', 'string', 'max:20', 'unique:pelanggan,nomor_hp'],
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email', 'unique:pelanggan,email'],
 
             'alamat_pemasangan' => ['required', 'string'],
             'detail_alamat' => ['nullable', 'string'],
@@ -32,6 +32,13 @@ class SimpanPendaftaranRequest extends FormRequest
 
             'foto_ktp' => ['required', 'image', 'max:2048'],
             'foto_selfie_ktp' => ['nullable', 'image', 'max:2048'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'email.unique' => 'Email sudah terdaftar. Gunakan email lain.',
         ];
     }
 }

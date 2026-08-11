@@ -16,7 +16,17 @@ class LaporanKendalaDiterimaNotification extends Notification implements ShouldQ
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Laporan Diterima',
+            'message' => "Laporan kendala {$this->laporan->nomor_laporan} telah diterima dan sedang kami proses.",
+            'type' => 'laporan_kendala',
+            'action_url' => "/pelanggan/laporan-kendala/{$this->laporan->id}",
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

@@ -16,7 +16,19 @@ class TagihanJatuhTempoReminderNotification extends Notification implements Shou
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Tagihan Jatuh Tempo',
+            'message' => "Tagihan {$this->tagihan->nomor_tagihan} sebesar Rp"
+                .number_format($this->tagihan->total_tagihan, 0, ',', '.')
+                ." jatuh tempo pada {$this->tagihan->tanggal_jatuh_tempo}. Segera lakukan pembayaran.",
+            'type' => 'tagihan',
+            'action_url' => "/pelanggan/tagihan/{$this->tagihan->id}",
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

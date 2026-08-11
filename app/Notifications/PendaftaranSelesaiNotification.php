@@ -16,7 +16,17 @@ class PendaftaranSelesaiNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Pendaftaran Berhasil',
+            'message' => "Pendaftaran Anda dengan nomor {$this->permohonan->nomor_permohonan} telah diterima. Tim kami akan memverifikasi data Anda.",
+            'type' => 'pendaftaran',
+            'action_url' => '/pelanggan/dashboard',
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

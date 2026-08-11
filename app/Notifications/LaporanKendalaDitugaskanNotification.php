@@ -16,7 +16,17 @@ class LaporanKendalaDitugaskanNotification extends Notification implements Shoul
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Laporan Ditugaskan',
+            'message' => "Laporan kendala {$this->laporan->nomor_laporan} ({$this->laporan->kategori_kendala}) ditugaskan kepada Anda.",
+            'type' => 'laporan_kendala',
+            'action_url' => "/admin/teknisi/laporan-kendala/{$this->laporan->id}",
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

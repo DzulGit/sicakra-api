@@ -24,18 +24,22 @@ class LupaPasswordController extends Controller
 
         $pelanggan = Pelanggan::where('email', $request->validated('email'))->first();
 
-        if ($pelanggan) {
-            $token = Str::random(60);
-            DB::table('password_reset_tokens')->updateOrInsert(
-                ['email' => $pelanggan->email],
-                ['token' => $token, 'created_at' => now()],
-            );
-
-            $pelanggan->notify(new ResetPasswordNotification($token));
+        if (! $pelanggan) {
+            throw ValidationException::withMessages([
+                'email' => ['Email tidak terdaftar. Periksa kembali email Anda.'],
+            ]);
         }
 
+        $token = Str::random(60);
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $pelanggan->email],
+            ['token' => $token, 'created_at' => now()],
+        );
+
+        $pelanggan->notify(new ResetPasswordNotification($token));
+
         return response()->json([
-            'message' => 'Jika email terdaftar, link reset password telah dikirim.',
+            'message' => 'Link reset password telah dikirim ke email Anda.',
         ]);
     }
 

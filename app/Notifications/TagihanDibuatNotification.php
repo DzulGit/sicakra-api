@@ -16,7 +16,19 @@ class TagihanDibuatNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Tagihan Baru',
+            'message' => "Tagihan {$this->tagihan->nomor_tagihan} sebesar Rp"
+                .number_format($this->tagihan->total_tagihan, 0, ',', '.')
+                ." untuk periode {$this->tagihan->periode_akhir_bulan} telah dibuat.",
+            'type' => 'tagihan',
+            'action_url' => "/pelanggan/tagihan/{$this->tagihan->id}",
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

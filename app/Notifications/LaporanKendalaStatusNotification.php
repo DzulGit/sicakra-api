@@ -21,7 +21,22 @@ class LaporanKendalaStatusNotification extends Notification implements ShouldQue
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        $subjek = $this->status === StatusLaporanEnum::SELESAI
+            ? 'Kendala Diselesaikan'
+            : 'Laporan Kendala Ditutup';
+
+        return [
+            'title' => $subjek,
+            'message' => "Laporan kendala {$this->laporan->nomor_laporan} berstatus ".ucwords(str_replace('_', ' ', $this->status->value)).'.'
+                .($this->hasil ? " Hasil penanganan: {$this->hasil}" : ''),
+            'type' => 'laporan_kendala',
+            'action_url' => "/pelanggan/laporan-kendala/{$this->laporan->id}",
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

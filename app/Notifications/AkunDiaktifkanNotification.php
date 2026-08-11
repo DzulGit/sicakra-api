@@ -16,7 +16,17 @@ class AkunDiaktifkanNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => 'Akun Diaktifkan',
+            'message' => 'Akun portal pelanggan Anda telah aktif. Silakan masuk dengan nomor pelanggan dan kata sandi default Anda.',
+            'type' => 'akun',
+            'action_url' => '/pelanggan/masuk',
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

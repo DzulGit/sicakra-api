@@ -2,17 +2,19 @@
 
 namespace App\Services;
 
+use App\Enums\PeranAdminEnum;
 use App\Enums\StatusLaporanEnum;
 use App\Exceptions\TransisiStatusTidakValidException;
 use App\Models\Admin;
 use App\Models\LaporanKendala;
 use App\Models\Pelanggan;
-use App\Notifications\LaporanKendalaDitugaskanNotification;
+use App\Notifications\LaporanKendalaBaruNotification;
 use App\Notifications\LaporanKendalaDiterimaNotification;
+use App\Notifications\LaporanKendalaDitugaskanNotification;
 use App\Notifications\LaporanKendalaStatusNotification;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 class LaporanKendalaService
 {
@@ -23,7 +25,7 @@ class LaporanKendalaService
 
     public function buat(array $data, Pelanggan|Admin $pembuat): LaporanKendala
     {
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $pembuat) {
             $data['nomor_laporan'] = $this->generatorNomor->generate(LaporanKendala::class, 'nomor_laporan', 'LPR');
             $data['status'] = StatusLaporanEnum::MENUNGGU;
 
@@ -32,14 +34,26 @@ class LaporanKendalaService
                 foreach ($data['foto'] as $file) {
                     $paths[] = $file->store('laporan-kendala', 's3');
                 }
-                
+
                 // Simpan sebagai JSON agar mendukung banyak gambar
-                $data['foto'] = json_encode($paths); 
+                $data['foto'] = json_encode($paths);
             }
 
-            return $this->laporanKendalaRepository->create($data);
+            $laporan = $this->laporanKendalaRepository->create($data);
+
+            if ($pembuat instanceof Pelanggan) {
+                Notification::send(
+                    Admin::where('status_aktif', true)
+                        ->whereIn('peran', [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN])
+                        ->get(),
+                    new LaporanKendalaBaruNotification($laporan->load('layananInternet.pelanggan')),
+                );
+            }
+
+            return $laporan;
         });
     }
+
     public function terima(LaporanKendala $laporan): LaporanKendala
     {
         $laporan = $this->ubahStatus($laporan, StatusLaporanEnum::DIPROSES);
@@ -127,7 +141,7 @@ class LaporanKendalaService
 
             // Ambil teknisi pertama dari array yang dipilih
             $teknisi = Admin::findOrFail($data['teknisi_ids'][0]);
-            
+
             // Simpan tanggal_kerja juga jika tabel database LaporanKendala sudah memiliki kolom tanggal_kerja
             return $this->teruskanKeTeknisi($laporan, $teknisi);
         });
