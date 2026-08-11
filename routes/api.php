@@ -6,7 +6,9 @@ use App\Http\Controllers\Api\Auth\LupaPasswordController;
 use App\Http\Controllers\Api\Keuangan\DashboardKeuanganController;
 use App\Http\Controllers\Api\Keuangan\PendapatanController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Operasional\DashboardController;
+use App\Http\Controllers\Api\Operasional\LaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController as OperasionalLaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
 use App\Http\Controllers\Api\Operasional\PelangganController;
@@ -24,7 +26,6 @@ use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
 use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
 use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
 use App\Http\Controllers\Api\Teknisi\LaporanKendalaController as TeknisiLaporanKendalaController;
-use App\Http\Controllers\Api\Operasional\LaporanKendalaController;
 use Illuminate\Support\Facades\Route;
 
 // ===== PUBLIK (tanpa login) =====
@@ -39,6 +40,11 @@ Route::prefix('admin')->group(function () {
 
     Route::middleware(['auth:sanctum', 'tipe-pengguna:admin'])->group(function () {
         Route::post('logout', [AuthAdminController::class, 'logout']);
+
+        // ----- Notifikasi (semua peran admin) -----
+        Route::get('notifikasi', [NotificationController::class, 'index']);
+        Route::patch('notifikasi/{notification}/dibaca', [NotificationController::class, 'markAsRead']);
+        Route::post('notifikasi/dibaca-semua', [NotificationController::class, 'markAllAsRead']);
 
         // ----- Operasional -----
         Route::middleware('peran:operasional,super_admin')->prefix('operasional')->group(function () {
@@ -136,6 +142,11 @@ Route::prefix('pelanggan')->group(function () {
 
     Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan'])->group(function () {
         Route::post('logout', [AuthPelangganController::class, 'logout']);
+
+        // ----- Notifikasi -----
+        Route::get('notifikasi', [NotificationController::class, 'index']);
+        Route::patch('notifikasi/{notification}/dibaca', [NotificationController::class, 'markAsRead']);
+        Route::post('notifikasi/dibaca-semua', [NotificationController::class, 'markAllAsRead']);
 
         Route::get('dashboard/ringkasan', [DashboardPelangganController::class, 'ringkasan']);
 

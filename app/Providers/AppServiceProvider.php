@@ -2,11 +2,33 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
+use App\Events\PembayaranBerhasil;
+use App\Events\TagihanDibuat;
+use App\Listeners\BuatInvoiceXendit;
+use App\Listeners\KirimNotifikasiPembayaranAdmin;
+use App\Listeners\KirimNotifikasiTagihanDibuat;
+use App\Listeners\KirimNotifikasiTagihanLunas;
+use App\Repositories\Contracts\AdminRepositoryInterface;
+use App\Repositories\Contracts\JadwalKerjaRepositoryInterface;
+use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
+use App\Repositories\Contracts\LayananInternetRepositoryInterface;
+use App\Repositories\Contracts\PelangganRepositoryInterface;
+use App\Repositories\Contracts\PermohonanLayananRepositoryInterface;
+use App\Repositories\Contracts\TagihanRepositoryInterface;
+use App\Repositories\Contracts\TimTeknisiRepositoryInterface;
+use App\Repositories\Eloquent\AdminRepository;
+use App\Repositories\Eloquent\JadwalKerjaRepository;
+use App\Repositories\Eloquent\LaporanKendalaRepository;
+use App\Repositories\Eloquent\LayananInternetRepository;
+use App\Repositories\Eloquent\PelangganRepository;
+use App\Repositories\Eloquent\PermohonanLayananRepository;
+use App\Repositories\Eloquent\TagihanRepository;
+use App\Repositories\Eloquent\TimTeknisiRepository;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Http\Request;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -16,41 +38,41 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
-            \App\Repositories\Contracts\PermohonanLayananRepositoryInterface::class,
-            \App\Repositories\Eloquent\PermohonanLayananRepository::class
+            PermohonanLayananRepositoryInterface::class,
+            PermohonanLayananRepository::class
         );
 
         $this->app->bind(
-            \App\Repositories\Contracts\LayananInternetRepositoryInterface::class,
-            \App\Repositories\Eloquent\LayananInternetRepository::class
+            LayananInternetRepositoryInterface::class,
+            LayananInternetRepository::class
         );
 
         $this->app->bind(
-            \App\Repositories\Contracts\TagihanRepositoryInterface::class,
-            \App\Repositories\Eloquent\TagihanRepository::class
+            TagihanRepositoryInterface::class,
+            TagihanRepository::class
         );
 
         $this->app->bind(
-            \App\Repositories\Contracts\JadwalKerjaRepositoryInterface::class,
-            \App\Repositories\Eloquent\JadwalKerjaRepository::class
+            JadwalKerjaRepositoryInterface::class,
+            JadwalKerjaRepository::class
         );
         $this->app->bind(
-            \App\Repositories\Contracts\TimTeknisiRepositoryInterface::class,
-            \App\Repositories\Eloquent\TimTeknisiRepository::class
-        );;
-
-        $this->app->bind(
-            \App\Repositories\Contracts\AdminRepositoryInterface::class,
-            \App\Repositories\Eloquent\AdminRepository::class
+            TimTeknisiRepositoryInterface::class,
+            TimTeknisiRepository::class
         );
 
         $this->app->bind(
-            \App\Repositories\Contracts\LaporanKendalaRepositoryInterface::class,
-            \App\Repositories\Eloquent\LaporanKendalaRepository::class
+            AdminRepositoryInterface::class,
+            AdminRepository::class
+        );
+
+        $this->app->bind(
+            LaporanKendalaRepositoryInterface::class,
+            LaporanKendalaRepository::class
         );
         $this->app->bind(
-            \App\Repositories\Contracts\PelangganRepositoryInterface::class,
-            \App\Repositories\Eloquent\PelangganRepository::class
+            PelangganRepositoryInterface::class,
+            PelangganRepository::class
         );
     }
 
@@ -72,18 +94,23 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Event::listen(
-            \App\Events\TagihanDibuat::class,
-            \App\Listeners\BuatInvoiceXendit::class,
+            TagihanDibuat::class,
+            BuatInvoiceXendit::class,
         );
 
         Event::listen(
-            \App\Events\TagihanDibuat::class,
-            \App\Listeners\KirimNotifikasiTagihanDibuat::class,
+            TagihanDibuat::class,
+            KirimNotifikasiTagihanDibuat::class,
         );
 
         Event::listen(
-            \App\Events\PembayaranBerhasil::class,
-            \App\Listeners\KirimNotifikasiTagihanLunas::class,
+            PembayaranBerhasil::class,
+            KirimNotifikasiTagihanLunas::class,
+        );
+
+        Event::listen(
+            PembayaranBerhasil::class,
+            KirimNotifikasiPembayaranAdmin::class,
         );
     }
 }
