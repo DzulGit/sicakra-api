@@ -60,7 +60,7 @@ class GenerateTagihanService
         // tagihan yang ada — baik periode yang sama PERSIS, maupun periode yang jatuh di
         // dalam rentang tagihan multi-bulan (mis. tagihan Januari jumlah_bulan=3 sudah
         // meng-cover Feb & Mar, jadi jangan generate tagihan Feb nya lagi).
-        if ($this->periodeTercover($layanan, $periodeBulan, $periodeTahun)) {
+        if ($this->periodeSudahTercover($layanan, $periodeBulan, $periodeTahun)) {
             return null;
         }
 
@@ -103,10 +103,10 @@ class GenerateTagihanService
     }
 
     /**
-     * True bila periode (bulan,tahun) sudah ter-cover oleh tagihan yang ada:
-     * rentang tagihan = [periode_bulan..periode_bulan + jumlah_bulan - 1].
+     * Dipakai generate manual: true bila periode (bulan,tahun) sudah ter-cover
+     * ter-cover tagihan yang ada. Rentang tagihan = [periode..periode+jumlah_bulan-1].
      */
-    private function periodeTercover(LayananInternet $layanan, int $periodeBulan, int $periodeTahun): bool
+    public function periodeSudahTercover(LayananInternet $layanan, int $periodeBulan, int $periodeTahun): bool
     {
         return Tagihan::where('layanan_internet_id', $layanan->id)
             ->get()

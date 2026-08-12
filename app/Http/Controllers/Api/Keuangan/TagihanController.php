@@ -13,6 +13,7 @@ use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
 use App\Services\GenerateTagihanService;
 use App\Services\SiklusPenagihanService;
+use App\Services\XenditInvoiceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class TagihanController extends Controller
         private readonly TagihanRepositoryInterface $tagihanRepository,
         private readonly GenerateTagihanService $generateTagihanService,
         private readonly SiklusPenagihanService $siklusPenagihanService,
+        private readonly XenditInvoiceService $xenditInvoiceService,
     ) {}
 
     public function index(TagihanFilter $filter)
@@ -62,8 +64,9 @@ class TagihanController extends Controller
 
     /**
      * Buat tagihan untuk periode tertentu yang dipilih admin (pilihan bulan tagihan)
-     * + jumlah hari jatuh tempo. Preview & konfirmasi ditangani frontend sebelum
-     * mengirim request ini. Idempotent: periode yang sudah ter-cover tagihan di-skip.
+     * — fitur DARURAT saja. Preview & konfirmasi ditangani frontend sebelum mengirim
+     * request ini. Periode yang sudah ter-cover tagihan (UNPAID maupun PAID) DITOLAK
+     * dengan error jelas; sistem penagihan harian normal dijalankan cron job.
      */
     public function generateUntukPelanggan(Request $request, Pelanggan $pelanggan)
     {
@@ -87,6 +90,18 @@ class TagihanController extends Controller
 
         if ($layananAktif->isEmpty()) {
             return response()->json(['message' => 'Pelanggan tidak punya layanan aktif.'], 422);
+        }
+
+        // Perketat: generate manual hanya boleh untuk periode yang BELUM diterbitkan
+        // — baik yang masih belum bayar maupun sudah lunas sekalipun. Kalau sudah ada
+        // record yang meng-cover periode pilihan, tolak di muka (jangan push terlanjur
+        // menghasilkan null diam-diam seperti perilaku idempotent lama).
+        foreach ($layananAktif as $layanan) {
+            if ($this->generateTagihanService->periodeSudahTercover($layanan, $periodeBulan, $periodeTahun)) {
+                return response()->json([
+                    'message' => "Tagihan untuk periode ini sudah diterbitkan (bulan {$periodeBulan}/{$periodeTahun}).",
+                ], 422);
+            }
         }
 
         $tagihanDibuat = [];
@@ -205,6 +220,48 @@ class TagihanController extends Controller
         return response()->json([
             'message' => "Pembayaran tunai diterima (oleh {$admin->nama_lengkap}). Tagihan lunas.",
             'data' => $tagihanBaru->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+        ]);
+    }
+
+    /**
+     * Perbarui link pembayaran (regenerate invoice Xendit) untuk tagihan yang
+     * link-nya kadaluwarsa / belum dibayar. Dipakai Admin Keuangan saat pelanggan
+     * kehabisan link bayar; durasi invoice baru 7 hari. Tagihan yang sudah LUNAS
+     * tidak boleh di-perbarui.
+     */
+    public function perbaruiLink(Tagihan $tagihan)
+    {
+        $this->authorize('create', Tagihan::class);
+
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
+            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        }
+
+        // Reset state invoice lama, naikkan retry invoice (biar external_id baru
+        // unik di Xendit), lalu minta invoice baru dengan durasi 7 hari.
+        $tagihan->update([
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'xendit_invoice_id' => null,
+            'xendit_external_id' => null,
+            'xendit_invoice_url' => null,
+            'xendit_invoice_status' => 'expired',
+            'xendit_invoice_expires_at' => null,
+            'xendit_invoice_retry_count' => $tagihan->xendit_invoice_retry_count + 1,
+        ]);
+
+        $body = $this->xenditInvoiceService->buatInvoice($tagihan->fresh(), durasiHari: 7);
+
+        $tagihan->update([
+            'xendit_invoice_id' => $body['id'],
+            'xendit_external_id' => $body['external_id'] ?? null,
+            'xendit_invoice_url' => $body['invoice_url'],
+            'xendit_invoice_status' => 'active',
+            'xendit_invoice_expires_at' => $body['expiry_date'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Link pembayaran berhasil diperbarui.',
+            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
         ]);
     }
 

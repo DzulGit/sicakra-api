@@ -35,9 +35,6 @@ class PelangganController extends Controller
     }
 
     /**
-     * Atur tanggal_tagihan 1 pelanggan secara manual (flexibel, per pelanggan).
-     */
-    /**
      * Reset username & password pelanggan oleh Admin Operasional (antisipasi
      * pelanggan lupa kedua-duanya). Username dan password di-set SAMA, nilainya
      * 6 karakter acak: huruf kecil/besar + angka, tanpa karakter ambigu
@@ -66,79 +63,26 @@ class PelangganController extends Controller
         ]);
     }
 
-    public function aturTanggalTagihan(Request $request, Pelanggan $pelanggan)
-    {
-        $validated = $request->validate([
-            'tanggal_tagihan' => 'required|integer|min:1|max:31',
-        ]);
-
-        $pelanggan->update(['tanggal_tagihan' => $validated['tanggal_tagihan']]);
-
-        return response()->json([
-            'message' => 'Tanggal penagihan pelanggan berhasil diubah.',
-            'data' => $pelanggan->fresh(),
-        ]);
-    }
-
     /**
-     * "Terapkan untuk Semua" — set tanggal_tagihan massal. Kalau `pelanggan_ids`
-     * dikirim, hanya pelanggan yang terpilih yang diubah; kosongkan untuk semua
-     * pelanggan aktif (yang sudah punya nomor_pelanggan).
-     */
-    public function bulkAturTanggalTagihan(Request $request)
-    {
-        $validated = $request->validate([
-            'tanggal_tagihan' => 'required|integer|min:1|max:31',
-            'pelanggan_ids' => 'sometimes|array',
-            'pelanggan_ids.*' => 'integer|exists:pelanggan,id',
-        ]);
-
-        $query = Pelanggan::query();
-
-        if (! empty($validated['pelanggan_ids'])) {
-            $query->whereIn('id', $validated['pelanggan_ids']);
-        } else {
-            $query->whereNotNull('nomor_pelanggan');
-        }
-
-        $jumlah = $query->update(['tanggal_tagihan' => $validated['tanggal_tagihan']]);
-
-        return response()->json([
-            'message' => "Tanggal penagihan diterapkan ke {$jumlah} pelanggan.",
-            'data' => ['ter_update' => $jumlah],
-        ]);
-    }
-
-    /**
-     * Override siklus penagihan per layanan: masa bebas tagihan &/atau tanggal
-     * mulai penagihan. Admin (Keuangan/Super Admin) yang memegang kendali promo.
+     * Ubah masa bebas tagihan (promo gratis X bulan) per layanan. Hanya knob
+     * promo yang boleh disentuh admin — tanggal_mulai_penagihan dihitung otomatis
+     * oleh sistem dari tanggal_aktif + bebas bulan (Full by System).
      */
     public function aturSiklusLayanan(Request $request, LayananInternet $layanan)
     {
         $validated = $request->validate([
             'bebas_tagihan_bulan' => 'sometimes|required|integer|min:0|max:24',
-            'tanggal_mulai_penagihan' => 'sometimes|required|date',
         ]);
 
-        $adaPerubahanBulanBebas = array_key_exists('bebas_tagihan_bulan', $validated);
-        $adaTanggalManual = array_key_exists('tanggal_mulai_penagihan', $validated);
-
-        $data = [];
-        if ($adaPerubahanBulanBebas) {
-            $data['bebas_tagihan_bulan'] = $validated['bebas_tagihan_bulan'];
-        }
-        if ($adaTanggalManual) {
-            $data['tanggal_mulai_penagihan'] = $validated['tanggal_mulai_penagihan'];
+        if (! array_key_exists('bebas_tagihan_bulan', $validated)) {
+            return response()->json(['message' => 'Tidak ada perubahan yang dikirim.'], 422);
         }
 
-        $layanan->update($data);
+        $layanan->update(['bebas_tagihan_bulan' => $validated['bebas_tagihan_bulan']]);
         $layanan->loadMissing('pelanggan');
 
-        // Kalau admin cuma ubah masa bebas, jadwal mulai penagihan ikut
-        // dihitung ulang dari tanggal_aktif (kecuali tanggal manual diberikan).
-        if ($adaPerubahanBulanBebas && ! $adaTanggalManual) {
-            $this->siklusPenagihanService->aturJadwalAwal($layanan);
-        }
+        // Jadwal mulai penagihan dihitung ulang dari tanggal_aktif + bebas bulan.
+        $this->siklusPenagihanService->aturJadwalAwal($layanan);
 
         return response()->json([
             'message' => 'Siklus penagihan layanan berhasil diubah.',

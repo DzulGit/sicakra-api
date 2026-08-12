@@ -10,6 +10,7 @@ use App\Models\Pelanggan;
 use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -36,7 +37,10 @@ class GenerateTagihanManualTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}");
+        $response = $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}", [
+            'periode_bulan' => now()->month,
+            'periode_tahun' => now()->year,
+        ]);
 
         $response->assertCreated();
         $this->assertCount(1, $response->json('data'));
@@ -59,10 +63,16 @@ class GenerateTagihanManualTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}")->assertCreated();
+        $params = [
+            'periode_bulan' => now()->month,
+            'periode_tahun' => now()->year,
+        ];
 
-        $response = $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}");
+        $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}", $params)->assertCreated();
+
+        $response = $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}", $params);
         $response->assertStatus(422);
+        $this->assertStringContainsString('sudah diterbitkan', $response->json('message'));
         $this->assertEquals(1, Tagihan::count());
     }
 
@@ -89,7 +99,7 @@ class GenerateTagihanManualTest extends TestCase
         $this->assertEquals(0, Tagihan::count());
     }
 
-    public function test_keuangan_generate_dengan_jumlah_bulan_banyak(): void
+    public function test_generate_periode_tercover_tagihan_sudah_bayar_harus_422(): void
     {
         $admin = Admin::factory()->keuangan()->create();
         $pelanggan = Pelanggan::factory()->create();
@@ -97,18 +107,23 @@ class GenerateTagihanManualTest extends TestCase
             'pelanggan_id' => $pelanggan->id,
             'status' => StatusLayananEnum::AKTIF,
         ]);
+        Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'periode_bulan' => now()->month,
+            'periode_tahun' => now()->year,
+            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+        ]);
 
         Sanctum::actingAs($admin);
 
         $response = $this->postJson("/api/admin/keuangan/tagihan/generate/{$pelanggan->id}", [
-            'jumlah_bulan' => 5,
+            'periode_bulan' => now()->month,
+            'periode_tahun' => now()->year,
         ]);
 
-        $response->assertCreated()->assertJsonCount(1, 'data');
-
-        $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->first();
-        $this->assertEquals(5, $tagihan->jumlah_bulan);
-        $this->assertEquals($layanan->paketInternet->harga * 5, $tagihan->total_tagihan);
+        $response->assertStatus(422);
+        $this->assertStringContainsString('sudah diterbitkan', $response->json('message'));
+        $this->assertEquals(1, Tagihan::count());
     }
 
     public function test_keuangan_regenerate_ubah_jumlah_bulan(): void
@@ -182,5 +197,67 @@ class GenerateTagihanManualTest extends TestCase
         $this->postJson("/api/admin/keuangan/tagihan/{$tagihan->id}/regenerate", [
             'jumlah_bulan' => 13,
         ])->assertStatus(422);
+    }
+
+    public function test_perbarui_link_tagihan_belum_bayar_mengembalikan_url_baru(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        $pelanggan = Pelanggan::factory()->create();
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusLayananEnum::AKTIF,
+        ]);
+        $tagihan = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'status_pembayaran' => StatusPembayaranEnum::KEDALUWARSA,
+            'xendit_invoice_retry_count' => 2,
+        ]);
+
+        Http::fake([
+            'https://api.xendit.co/v2/invoices' => Http::response([
+                'id' => 'inv-baru',
+                'external_id' => 'TGH-'.$tagihan->nomor_tagihan.'-3',
+                'invoice_url' => 'https://checkout.xendit.co/web/inv-baru',
+                'expiry_date' => now()->addDays(7)->toIso8601String(),
+            ], 200),
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->postJson("/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link");
+
+        $response->assertOk()
+            ->assertJsonPath('message', 'Link pembayaran berhasil diperbarui.')
+            ->assertJsonPath('data.xendit_invoice_url', 'https://checkout.xendit.co/web/inv-baru')
+            ->assertJsonPath('data.xendit_invoice_status', 'active');
+
+        $reload = $tagihan->fresh();
+        $this->assertEquals('inv-baru', $reload->xendit_invoice_id);
+        $this->assertEquals(3, $reload->xendit_invoice_retry_count);
+        $this->assertEquals(StatusPembayaranEnum::BELUM_BAYAR, $reload->status_pembayaran);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'api.xendit.co/v2/invoices')
+                && $request['invoice_duration'] === 7 * 86400;
+        });
+    }
+
+    public function test_perbarui_link_tagihan_sudah_bayar_harus_422(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        $pelanggan = Pelanggan::factory()->create();
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusLayananEnum::AKTIF,
+        ]);
+        $tagihan = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson("/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link")
+            ->assertStatus(422);
     }
 }

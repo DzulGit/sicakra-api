@@ -85,8 +85,6 @@ Route::prefix('admin')->group(function () {
             Route::get('pelanggan', [PelangganController::class, 'index']);
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
-            Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
-            Route::post('pelanggan/tanggal-tagihan/bulk', [PelangganController::class, 'bulkAturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
         });
 
@@ -113,6 +111,7 @@ Route::prefix('admin')->group(function () {
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
             Route::post('tagihan/generate/{pelanggan}', [KeuanganTagihanController::class, 'generateUntukPelanggan']);
+            Route::post('tagihan/{tagihan}/perbarui-link', [KeuanganTagihanController::class, 'perbaruiLink']);
             Route::post('tagihan/{tagihan}/regenerate', [KeuanganTagihanController::class, 'regenerate']);
             Route::post('tagihan/{tagihan}/bayar-tunai', [KeuanganTagihanController::class, 'bayarTunai']);
         });

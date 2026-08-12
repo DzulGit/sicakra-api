@@ -74,14 +74,24 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
 
     public function styles(Worksheet $sheet): array
     {
-        return [
+        $barisAkhir = 7 + count($this->detail);
+
+        $gaya = [
             7 => [
                 'font' => ['bold' => true],
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9E2F3']],
                 'alignment' => ['horizontal' => 'center'],
             ],
-            'O8:Q1000' => ['numberFormat' => ['formatCode' => '#,##0']],
         ];
+
+        // Format angka hanya sebatas baris data terakhir, supaya lembar kerja
+        // tidak penuh baris kosong (dulu dipakai "O8:Q1000" yang membuat
+        // scrollbar/file tampak sampai ~baris 1000).
+        if ($barisAkhir >= 8) {
+            $gaya["O8:P{$barisAkhir}"] = ['numberFormat' => ['formatCode' => '#,##0']];
+        }
+
+        return $gaya;
     }
 
     public function registerEvents(): array

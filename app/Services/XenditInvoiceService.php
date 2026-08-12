@@ -7,13 +7,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Membuat invoice Xendit untuk sebuah tagihan. Dipakai baik oleh listener
+ * Buat invoice Xendit untuk sebuah tagihan. Dipakai baik oleh listener
  * async (auto/massal) maupun oleh endpoint regenerate (sinkron, supaya URL
- * baru bisa langsung dikembalikan ke pelanggan).
+ * baru bisa langsung dikembalikan ke pelanggan). `$durasiHari` opsional:
+ * default dari config, khusus perbarui-link admin dipakai 7 hari.
  */
 class XenditInvoiceService
 {
-    public function buatInvoice(Tagihan $tagihan): array
+    public function buatInvoice(Tagihan $tagihan, ?int $durasiHari = null): array
     {
         $tagihan = $tagihan->fresh(['layananInternet.pelanggan']);
         $pelanggan = $tagihan->layananInternet->pelanggan;
@@ -23,7 +24,9 @@ class XenditInvoiceService
             'amount' => (float) $tagihan->total_tagihan,
             'description' => $this->buatDeskripsi($tagihan),
             'currency' => 'IDR',
-            'invoice_duration' => config('services.xendit.invoice_duration', 864000),
+            'invoice_duration' => $durasiHari
+                ? $durasiHari * 86400
+                : config('services.xendit.invoice_duration', 864000),
             'payment_methods' => ['QRIS', 'BCA', 'MANDIRI', 'BRI', 'ALFAMART', 'INDOMARET'],
             'metadata' => [
                 'tagihan_id' => $tagihan->id,
@@ -63,14 +66,14 @@ class XenditInvoiceService
     public function buatExternalId(Tagihan $tagihan): string
     {
         $retry = max(0, (int) $tagihan->xendit_invoice_retry_count);
-        $suffix = $retry > 0 ? '-' . $retry : '';
+        $suffix = $retry > 0 ? '-'.$retry : '';
 
-        return 'TGH-' . $tagihan->nomor_tagihan . $suffix;
+        return 'TGH-'.$tagihan->nomor_tagihan.$suffix;
     }
 
     private function buatDeskripsi(Tagihan $tagihan): string
     {
-        $periode = $tagihan->periode_bulan . '/' . $tagihan->periode_tahun;
+        $periode = $tagihan->periode_bulan.'/'.$tagihan->periode_tahun;
         $paket = $tagihan->nama_paket_snapshot;
 
         $label = "Pembayaran {$paket} - Periode {$periode}";
