@@ -11,6 +11,7 @@ use App\Models\Tagihan;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PendapatanController extends Controller
@@ -19,6 +20,13 @@ class PendapatanController extends Controller
         1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun',
         7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
     ];
+
+    private const NAMA_BULAN_LENGKAP = [
+        1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
+        7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+    ];
+
+    private const KOLOM = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
 
     /** Ringkasan pendapatan filterable per bulan/tahun. */
     public function index(Request $request)
@@ -51,7 +59,7 @@ class PendapatanController extends Controller
             ->get()
             ->map(fn ($item) => [
                 'status' => $item->status_pembayaran->value,
-                'label' => $this->labelStatus($item->status_pembayaran->value),
+                'label' => $this->labelStatus($item->status_pembayaran),
                 'jumlah' => (int) $item->jumlah,
             ]);
 
@@ -86,15 +94,18 @@ class PendapatanController extends Controller
         [$tahun, $bulan] = $this->periode($request);
 
         $pembayaran = $this->pembayaranPeriode($tahun, $bulan)->get();
+        $detail = $this->detailPembayaran($pembayaran);
+        $ringkasan = $this->ringkasan($pembayaran);
 
         $pdf = Pdf::loadView('pdf.report-pendapatan', [
             'tahun' => $tahun,
             'bulan' => $bulan,
-            'namaBulan' => self::NAMA_BULAN[$bulan],
-            'pembayaran' => $pembayaran,
-            'total' => $pembayaran->sum('jumlah_dibayar'),
-            'jumlah' => $pembayaran->count(),
-        ]);
+            'namaBulan' => self::NAMA_BULAN_LENGKAP[$bulan],
+            'filterLabel' => $this->filterLabel($tahun, $bulan),
+            'detail' => $detail,
+            'ringkasan' => $ringkasan,
+            'dicetakPada' => now()->format('d M Y H:i'),
+        ])->setPaper('a4', 'landscape');
 
         return $pdf->stream("laporan-pendapatan-{$bulan}-{$tahun}.pdf");
     }
@@ -105,13 +116,14 @@ class PendapatanController extends Controller
         [$tahun, $bulan] = $this->periode($request);
 
         $pembayaran = $this->pembayaranPeriode($tahun, $bulan)->get();
+        $detail = $this->detailPembayaran($pembayaran);
 
         $file = Excel::raw(new PendapatanReportExport(
-            $pembayaran,
-            self::NAMA_BULAN[$bulan],
-            $tahun,
-            (float) $pembayaran->sum('jumlah_dibayar'),
-            $pembayaran->count(),
+            $detail,
+            'Laporan Pendapatan Bulanan',
+            $this->filterLabel($tahun, $bulan),
+            self::NAMA_BULAN_LENGKAP[$bulan].' '.$tahun,
+            $this->ringkasan($pembayaran),
         ), \Maatwebsite\Excel\Excel::XLSX);
 
         return response($file, 200, [
@@ -136,8 +148,87 @@ class PendapatanController extends Controller
         return Pembayaran::where('status', StatusTransaksiEnum::BERHASIL)
             ->whereMonth('dibayar_pada', $bulan)
             ->whereYear('dibayar_pada', $tahun)
-            ->with('tagihan.layananInternet.pelanggan')
+            ->with('tagihan.layananInternet.pelanggan', 'tagihan.layananInternet.paketInternet')
             ->orderBy('dibayar_pada');
+    }
+
+    /** Baris detail laporan — satu sumber data dipakai Excel & PDF biar konsisten. */
+    private function detailPembayaran(Collection $pembayaran): array
+    {
+        return $pembayaran->values()->map(function (Pembayaran $item, int $i) {
+            $tagihan = $item->tagihan;
+            $layanan = $tagihan?->layananInternet;
+            $pelanggan = $layanan?->pelanggan;
+            $paket = $layanan?->paketInternet;
+
+            return [
+                'no' => $i + 1,
+                'tanggal_bayar' => $item->dibayar_pada?->format('d/m/Y H:i') ?? '-',
+                'nomor_tagihan' => $tagihan?->nomor_tagihan ?? '-',
+                'periode_tagihan' => $this->labelPeriodeTagihan($tagihan),
+                'nomor_pelanggan' => $pelanggan?->nomor_pelanggan ?? '-',
+                'nama_pelanggan' => $pelanggan?->nama_lengkap ?? '-',
+                'nik' => $pelanggan?->nik ?? '-',
+                'nomor_hp' => $pelanggan?->nomor_hp ?? '-',
+                'alamat' => $layanan?->alamat_pemasangan ?? '-',
+                'nomor_layanan' => $layanan?->nomor_layanan ?? '-',
+                'nama_paket' => $tagihan?->nama_paket_snapshot
+                    ?? $paket?->nama_paket
+                    ?? $layanan?->nama_paket_custom
+                    ?? '-',
+                'kecepatan' => $this->labelKecepatan($paket?->kecepatan_mbps, $layanan?->kecepatan_custom_mbps),
+                'metode' => $item->metode_pembayaran ? ucwords((string) $item->metode_pembayaran) : '-',
+                'jatuh_tempo' => $tagihan?->tanggal_jatuh_tempo?->format('d/m/Y') ?? '-',
+                'total_tagihan' => (float) ($tagihan?->total_tagihan ?? 0),
+                'jumlah_dibayar' => (float) ($item->jumlah_dibayar ?? 0),
+                'status' => $this->labelStatus($tagihan?->status_pembayaran),
+            ];
+        })->all();
+    }
+
+    private function ringkasan(Collection $pembayaran): array
+    {
+        $total = (float) $pembayaran->sum('jumlah_dibayar');
+        $jumlah = $pembayaran->count();
+
+        return [
+            'jumlah_transaksi' => $jumlah,
+            'total_pendapatan' => $total,
+            'rata_rata' => $jumlah > 0 ? $total / $jumlah : 0,
+            'pelanggan_unik' => $pembayaran
+                ->pluck('tagihan.layananInternet.pelanggan.nama_lengkap')
+                ->filter()
+                ->unique()
+                ->count(),
+        ];
+    }
+
+    /** Label periode penagihan tagihan, mis. "Feb 2026" atau "Feb – Apr 2026" utk multi-bulan. */
+    private function labelPeriodeTagihan(?Tagihan $tagihan): string
+    {
+        if (! $tagihan) {
+            return '-';
+        }
+
+        $mulai = self::NAMA_BULAN[$tagihan->periode_bulan] ?? '?';
+        $akhir = $tagihan->periodeBulanAkhir();
+        $akhirLabel = (self::NAMA_BULAN[$akhir['bulan']] ?? '?').' '.$akhir['tahun'];
+
+        return $akhir === ['bulan' => $tagihan->periode_bulan, 'tahun' => $tagihan->periode_tahun]
+            ? "{$mulai} {$tagihan->periode_tahun}"
+            : "{$mulai} {$tagihan->periode_tahun} – {$akhirLabel}";
+    }
+
+    private function labelKecepatan($kecepatanPaket, $kecepatanCustom): string
+    {
+        $nilai = (float) ($kecepatanPaket ?? $kecepatanCustom ?? 0);
+
+        return $nilai > 0 ? rtrim(rtrim(number_format($nilai, 2, ',', ''), '0'), ',,').' Mbps' : '-';
+    }
+
+    private function filterLabel(int $tahun, int $bulan): string
+    {
+        return self::NAMA_BULAN[$bulan].' '.$tahun;
     }
 
     private function tagihanPeriode(int $tahun, ?int $bulan): Builder
@@ -184,13 +275,13 @@ class PendapatanController extends Controller
         return $tren;
     }
 
-    private function labelStatus(string $status): string
+    private function labelStatus(?StatusPembayaranEnum $status): string
     {
         return match ($status) {
-            StatusPembayaranEnum::BELUM_BAYAR->value => 'Belum Bayar',
-            StatusPembayaranEnum::SUDAH_BAYAR->value => 'Sudah Bayar',
-            StatusPembayaranEnum::KEDALUWARSA->value => 'Kedaluwarsa',
-            default => $status,
+            StatusPembayaranEnum::BELUM_BAYAR => 'Belum Bayar',
+            StatusPembayaranEnum::SUDAH_BAYAR => 'Sudah Bayar',
+            StatusPembayaranEnum::KEDALUWARSA => 'Kedaluwarsa',
+            default => '-',
         };
     }
 

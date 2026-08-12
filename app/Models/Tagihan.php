@@ -70,8 +70,8 @@ class Tagihan extends Model
         $total = ($this->periode_tahun * 12) + ($this->periode_bulan - 1) + max(1, $this->jumlah_bulan) - 1;
 
         return [
-            'bulan' => (($total % 12) + 11) % 12 + 1,
-            'tahun' => intdiv($total - 1, 12),
+            'bulan' => ($total % 12) + 1,
+            'tahun' => intdiv($total, 12),
         ];
     }
 
