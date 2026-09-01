@@ -107,8 +107,9 @@ Route::prefix('admin')->group(function () {
         Route::middleware('peran:keuangan,super_admin')->prefix('keuangan')->group(function () {
             Route::get('dashboard', [DashboardKeuanganController::class, 'index']);
             Route::get('pendapatan', [PendapatanController::class, 'index']);
-            Route::get('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
-            Route::get('pendapatan/report', [PendapatanController::class, 'report']);
+            Route::get('pendapatan/pelanggan-list', [PendapatanController::class, 'pelangganList']);
+            Route::post('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
+            Route::post('pendapatan/report', [PendapatanController::class, 'report']);
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);

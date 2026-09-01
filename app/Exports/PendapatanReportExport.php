@@ -19,8 +19,7 @@ class PendapatanReportExport implements FromCollection, WithHeadings, WithMappin
 {
     public function __construct(
         private readonly Collection $pembayaran,
-        private readonly string $namaBulan,
-        private readonly int $tahun,
+        private readonly string $labelPeriode,
         private readonly float $total,
         private readonly int $jumlah,
     ) {
@@ -41,8 +40,8 @@ class PendapatanReportExport implements FromCollection, WithHeadings, WithMappin
             'Nomor Layanan',
             'Paket',
             'Metode Pembayaran',
-            'Tanggal Bayar',
-            'Jumlah Dibayar',
+            'Tanggal & Jam Bayar',
+            'Nominal Pembayaran',
         ];
     }
 
@@ -60,7 +59,7 @@ class PendapatanReportExport implements FromCollection, WithHeadings, WithMappin
             $layanan?->nomor_layanan,
             $tagihan?->nama_paket_snapshot,
             ucwords((string) $item->metode_pembayaran),
-            $item->dibayar_pada?->format('d/m/Y H:i'),
+            $item->dibayar_pada?->format('d-m-Y H:i:s'),
             (float) $item->jumlah_dibayar,
         ];
     }
@@ -74,7 +73,7 @@ class PendapatanReportExport implements FromCollection, WithHeadings, WithMappin
     {
         return [
             'A' => 6, 'B' => 18, 'C' => 18, 'D' => 26, 'E' => 18,
-            'F' => 18, 'G' => 18, 'H' => 20, 'I' => 18,
+            'F' => 18, 'G' => 18, 'H' => 22, 'I' => 18,
         ];
     }
 
@@ -93,11 +92,11 @@ class PendapatanReportExport implements FromCollection, WithHeadings, WithMappin
                 $sheet = $event->sheet->getDelegate();
 
                 $sheet->mergeCells('A1:I1');
-                $sheet->setCellValue('A1', 'SICAKRA — Laporan Pendapatan Bulanan');
+                $sheet->setCellValue('A1', 'SICAKRA — Laporan Pendapatan');
                 $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
 
                 $sheet->mergeCells('A2:I2');
-                $sheet->setCellValue('A2', "Periode: {$this->namaBulan} {$this->tahun}");
+                $sheet->setCellValue('A2', "Periode: {$this->labelPeriode}");
                 $sheet->getStyle('A2')->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('666666'));
 
                 $sheet->mergeCells('A3:I3');

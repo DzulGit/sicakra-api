@@ -52,10 +52,9 @@ class PendapatanTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->getJson('/api/admin/keuangan/pendapatan?'.http_build_query([
-            'tahun' => now()->year,
-            'bulan' => now()->month,
-        ]));
+        $bulan = now()->month;
+        $qs = http_build_query(['tahun' => now()->year])."&bulan%5B%5D={$bulan}";
+        $response = $this->getJson('/api/admin/keuangan/pendapatan?'.$qs);
 
         $response->assertOk()
             ->assertJsonPath('data.stats.total_pendapatan', 'Rp 150.000')
@@ -78,6 +77,36 @@ class PendapatanTest extends TestCase
             ->assertJsonCount(12, 'data.tren');
     }
 
+    public function test_filter_pelanggan_ids(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        $this->buatPembayaranBerhasil();
+
+        Sanctum::actingAs($admin);
+
+        $pelanggan = Pelanggan::first();
+        $qs = http_build_query(['tahun' => now()->year])."&pelanggan_ids%5B%5D={$pelanggan->id}";
+        $response = $this->getJson('/api/admin/keuangan/pendapatan?'.$qs);
+
+        $response->assertOk()
+            ->assertJsonPath('data.stats.jumlah_pembayaran', 1);
+    }
+
+    public function test_filter_multi_bulan(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        $this->buatPembayaranBerhasil();
+
+        Sanctum::actingAs($admin);
+
+        $bulan = now()->month;
+        $qs = http_build_query(['tahun' => now()->year])."&bulan%5B%5D={$bulan}&bulan%5B%5D=1";
+        $response = $this->getJson('/api/admin/keuangan/pendapatan?'.$qs);
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data.tren');
+    }
+
     public function test_report_pdf_bulanan(): void
     {
         $admin = Admin::factory()->keuangan()->create();
@@ -85,10 +114,10 @@ class PendapatanTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->get('/api/admin/keuangan/pendapatan/report?'.http_build_query([
+        $response = $this->postJson('/api/admin/keuangan/pendapatan/report', [
             'tahun' => now()->year,
-            'bulan' => now()->month,
-        ]));
+            'bulan' => [now()->month],
+        ]);
 
         $response->assertOk();
         $this->assertStringContainsString(
@@ -105,10 +134,10 @@ class PendapatanTest extends TestCase
 
         Sanctum::actingAs($admin);
 
-        $response = $this->get('/api/admin/keuangan/pendapatan/report/excel?'.http_build_query([
+        $response = $this->postJson('/api/admin/keuangan/pendapatan/report/excel', [
             'tahun' => now()->year,
-            'bulan' => now()->month,
-        ]));
+            'bulan' => [now()->month],
+        ]);
 
         $response->assertOk();
         $this->assertStringContainsString(
