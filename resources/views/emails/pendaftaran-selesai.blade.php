@@ -7,7 +7,7 @@
         <div><strong>Paket:</strong> {{ $paket }}</div>
     </div>
 
-    <p>Tim operasional akan menghubungi Anda untuk melanjutkan proses pemasangan. Pantau status permohonan Anda melalui portal pelanggan.</p>
+    <p>Tim operasional akan menghubungi Anda untuk melanjutkan proses survey atau pemasangan. Mohon tunggu 1x24 jam.</p>
 
     <p class="muted">Terima kasih telah memilih Sicakra — Fast. Stable. Reliable.</p>
 </x-emails.layout>
