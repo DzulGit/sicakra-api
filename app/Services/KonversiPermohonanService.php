@@ -14,6 +14,7 @@ use App\Models\RiwayatPerubahanPaket;
 use App\Models\RiwayatRelokasi;
 use App\Repositories\Contracts\LayananInternetRepositoryInterface;
 use Illuminate\Support\Facades\DB;
+use App\Services\GenerateTagihanService;
 
 class KonversiPermohonanService
 {
@@ -23,6 +24,7 @@ class KonversiPermohonanService
         private readonly PermohonanLayananService $permohonanLayananService,
         private readonly AktivasiAkunPelangganService $aktivasiAkunPelangganService,
         private readonly SiklusPenagihanService $siklusPenagihanService,
+        private readonly GenerateTagihanService $generateTagihanService,
     ) {}
 
     public function konversi(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
@@ -48,18 +50,23 @@ class KonversiPermohonanService
 
     private function konversiPemasanganBaru(PermohonanLayanan $permohonan): LayananInternet
     {
-        // Aktivasi akun (nomor_pelanggan + tanggal_tagihan dari tanggal install)
-        // DULUAN supaya tanggal_tagihan sudah benar saat layanan dibuat & jadwal
-        // penagihan awal dihitung.
         $this->aktivasiAkunPelangganService->aktivasiJikaLayananPertama($permohonan->pelanggan);
 
-        // Promo gratis bulan dari Master Paket (default 0) hanya untuk pemasangan
-        // baru — diterapkan otomatis ke bebas_tagihan_bulan, tanpa input manual admin.
         $bebasBulanPromo = $permohonan->tipe_paket === TipePaketEnum::REGULER
             ? (int) ($permohonan->paketInternet?->promo_gratis_bulan ?? 0)
             : 0;
 
-        return $this->buatLayananDariPermohonan($permohonan, $bebasBulanPromo);
+        // 1. Buat layanan dengan status otomatis aktif dari bawaan sistem
+        $layanan = $this->buatLayananDariPermohonan($permohonan, $bebasBulanPromo);
+
+        // 2. Generate tagihan pertama seketika
+        $this->generateTagihanService->generateUntukLayanan(
+            $layanan,
+            now()->month,
+            now()->year
+        );
+
+        return $layanan;
     }
 
     private function konversiTambahPaket(PermohonanLayanan $permohonan): LayananInternet
