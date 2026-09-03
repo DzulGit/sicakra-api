@@ -82,6 +82,7 @@ Route::prefix('admin')->group(function () {
         // ----- Pelanggan (Operasional + Keuangan) -----
         // Keuangan perlu buka detail pelanggan untuk generate tagihan manual.
         Route::middleware('peran:operasional,keuangan,super_admin')->prefix('operasional')->group(function () {
+            Route::post('pelanggan/buat-baru', [PelangganController::class, 'buatBaru']);
             Route::get('pelanggan', [PelangganController::class, 'index']);
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
