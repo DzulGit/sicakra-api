@@ -59,28 +59,6 @@ class TagihanSayaController extends Controller
             return response()->json(['message' => 'Maksimal percobaan pembayaran telah tercapai. Hubungi customer service.'], 422);
         }
 
-        $validated = $request->validate([
-            'jumlah_bulan' => 'sometimes|integer|min:1|max:12',
-        ]);
-
-        $jumlahBulan = $validated['jumlah_bulan'] ?? 1;
-
-        // TAHAP 4: mengubah jumlah bulan = fungsi "regenerate/ubah bulan" —
-        // dibatasi maksimal 3x per invoice.
-        $ubahBulan = $jumlahBulan !== (int) $tagihan->jumlah_bulan;
-
-        if ($ubahBulan && $tagihan->retry_count >= 3) {
-            return response()->json(['message' => 'Batas perubahan tagihan tercapai. Silakan hubungi Admin Keuangan.'], 422);
-        }
-
-        if ($ubahBulan) {
-            $tagihan->update([
-                'jumlah_bulan' => $jumlahBulan,
-                'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
-                'retry_count' => $tagihan->retry_count + 1,
-            ]);
-        }
-
         $tagihan->update([
             'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
             'xendit_invoice_id' => null,
