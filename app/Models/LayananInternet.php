@@ -26,6 +26,8 @@ class LayananInternet extends Model
         'harga_custom',
         'alamat_pemasangan',
         'detail_alamat',
+        'provinsi',
+        'kota',
         'latitude',
         'longitude',
         'status',

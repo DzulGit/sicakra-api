@@ -82,6 +82,7 @@ Route::prefix('admin')->group(function () {
         // ----- Pelanggan (Operasional + Keuangan) -----
         // Keuangan perlu buka detail pelanggan untuk generate tagihan manual.
         Route::middleware('peran:operasional,keuangan,super_admin')->prefix('operasional')->group(function () {
+            Route::post('pelanggan/buat-baru', [PelangganController::class, 'buatBaru']);
             Route::get('pelanggan', [PelangganController::class, 'index']);
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
@@ -99,14 +100,19 @@ Route::prefix('admin')->group(function () {
             Route::get('laporan-kendala', [TeknisiLaporanKendalaController::class, 'index']);
             Route::get('laporan-kendala/{laporanKendala}', [TeknisiLaporanKendalaController::class, 'show']);
             Route::patch('laporan-kendala/{laporanKendala}/selesaikan', [TeknisiLaporanKendalaController::class, 'selesaikan']);
+
+            Route::get('dashboard/antrean-pengecekan', [DashboardTeknisiController::class, 'antreanPengecekan']);
+            Route::post('dashboard/permohonan/{permohonan}/layak-pasang', [DashboardTeknisiController::class, 'layakPasang']);
+            Route::post('dashboard/permohonan/{permohonan}/tolak', [DashboardTeknisiController::class, 'tolak']);
         });
 
         // ----- Keuangan -----
         Route::middleware('peran:keuangan,super_admin')->prefix('keuangan')->group(function () {
             Route::get('dashboard', [DashboardKeuanganController::class, 'index']);
             Route::get('pendapatan', [PendapatanController::class, 'index']);
-            Route::get('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
-            Route::get('pendapatan/report', [PendapatanController::class, 'report']);
+            Route::get('pendapatan/pelanggan-list', [PendapatanController::class, 'pelangganList']);
+            Route::post('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
+            Route::post('pendapatan/report', [PendapatanController::class, 'report']);
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);

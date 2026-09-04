@@ -29,7 +29,7 @@ class PermohonanLayananService
                 'nomor_permohonan',
                 'PMH'
             );
-            $data['status'] = StatusPermohonanEnum::MENUNGGU_VERIFIKASI;
+            $data['status'] = StatusPermohonanEnum::MENUNGGU_PENGECEKAN_TEKNIS;
             
             $data['tipe_paket'] = $data['tipe_paket'] ?? 'reguler';
 
@@ -54,9 +54,9 @@ class PermohonanLayananService
             $this->catatRiwayat(
                 $permohonan,
                 null,
-                StatusPermohonanEnum::MENUNGGU_VERIFIKASI,
+                StatusPermohonanEnum::MENUNGGU_PENGECEKAN_TEKNIS,
                 null,
-                'Permohonan diajukan.'
+                'Permohonan diajukan, menunggu pengecekan kelayakan jaringan.'
             );
 
             return $permohonan;

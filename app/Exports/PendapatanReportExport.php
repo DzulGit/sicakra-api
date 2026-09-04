@@ -41,12 +41,21 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
     private const LAST_COLUMN = 'Q';
 
     public function __construct(
+<<<<<<< HEAD
         private readonly array $detail,
         private readonly string $judul,
         private readonly string $filterLabel,
         private readonly string $periodeLengkap,
         private readonly array $ringkasan,
     ) {}
+=======
+        private readonly Collection $pembayaran,
+        private readonly string $labelPeriode,
+        private readonly float $total,
+        private readonly int $jumlah,
+    ) {
+    }
+>>>>>>> api-development
 
     public function collection(): Collection
     {
@@ -55,20 +64,62 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
 
     public function headings(): array
     {
+<<<<<<< HEAD
         return self::HEADINGS;
+=======
+        return [
+            'No.',
+            'Nomor Tagihan',
+            'Nomor Pelanggan',
+            'Pelanggan',
+            'Nomor Layanan',
+            'Paket',
+            'Metode Pembayaran',
+            'Tanggal & Jam Bayar',
+            'Nominal Pembayaran',
+        ];
+>>>>>>> api-development
     }
 
     public function startCell(): string
     {
+<<<<<<< HEAD
         return 'A7';
+=======
+        $tagihan = $item->tagihan;
+        $layanan = $tagihan?->layananInternet;
+        $pelanggan = $layanan?->pelanggan;
+
+        return [
+            null,
+            $tagihan?->nomor_tagihan,
+            $pelanggan?->nomor_pelanggan,
+            $pelanggan?->nama_lengkap,
+            $layanan?->nomor_layanan,
+            $tagihan?->nama_paket_snapshot,
+            ucwords((string) $item->metode_pembayaran),
+            $item->dibayar_pada?->format('d-m-Y H:i:s'),
+            (float) $item->jumlah_dibayar,
+        ];
+    }
+
+    public function startRow(): int
+    {
+        return 5;
+>>>>>>> api-development
     }
 
     public function columnWidths(): array
     {
         return [
+<<<<<<< HEAD
             'A' => 6, 'B' => 17, 'C' => 17, 'D' => 19, 'E' => 17, 'F' => 26,
             'G' => 18, 'H' => 16, 'I' => 38, 'J' => 17, 'K' => 24, 'L' => 11,
             'M' => 15, 'N' => 13, 'O' => 16, 'P' => 16, 'Q' => 14,
+=======
+            'A' => 6, 'B' => 18, 'C' => 18, 'D' => 26, 'E' => 18,
+            'F' => 18, 'G' => 18, 'H' => 22, 'I' => 18,
+>>>>>>> api-development
         ];
     }
 
@@ -101,6 +152,7 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
                 $sheet = $event->sheet->getDelegate();
                 $last = self::LAST_COLUMN;
 
+<<<<<<< HEAD
                 $sheet->mergeCells("A1:{$last}1");
                 $sheet->setCellValue('A1', 'SICAKRA — '.$this->judul);
                 $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
@@ -108,6 +160,15 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
                 $sheet->mergeCells("A2:{$last}2");
                 $sheet->setCellValue('A2', "Periode: {$this->periodeLengkap}");
                 $sheet->getStyle('A2')->getFont()->setColor(new Color('666666'));
+=======
+                $sheet->mergeCells('A1:I1');
+                $sheet->setCellValue('A1', 'SICAKRA — Laporan Pendapatan');
+                $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+
+                $sheet->mergeCells('A2:I2');
+                $sheet->setCellValue('A2', "Periode: {$this->labelPeriode}");
+                $sheet->getStyle('A2')->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('666666'));
+>>>>>>> api-development
 
                 $sheet->mergeCells("A4:{$last}4");
                 $sheet->setCellValue('A4', $this->ringkasanLine1());
@@ -154,6 +215,7 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
             },
         ];
     }
+<<<<<<< HEAD
 
     private function ringkasanLine1(): string
     {
@@ -167,4 +229,6 @@ class PendapatanReportExport implements FromCollection, WithColumnWidths, WithCu
             .'    |    Pelanggan Unik: '.$this->ringkasan['pelanggan_unik']
             .'    |    Dicetak: '.now()->format('d M Y H:i');
     }
+=======
+>>>>>>> api-development
 }

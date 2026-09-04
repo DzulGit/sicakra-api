@@ -34,6 +34,8 @@ class TambahPermohonanRequest extends FormRequest
 
             'alamat_pemasangan' => ['nullable', 'string'],
             'detail_alamat' => ['nullable', 'string'],
+            'provinsi' => ['nullable', 'string', 'max:255'],
+            'kota' => ['nullable', 'string', 'max:255'],
             'rt' => ['nullable', 'string', 'max:3'],
             'rw' => ['nullable', 'string', 'max:3'],
             'kode_pos' => ['nullable', 'string', 'max:5'],

@@ -11,6 +11,7 @@ enum StatusPermohonanEnum: string
     case DIJADWALKAN = 'DIJADWALKAN';
     case DITUNDA = 'DITUNDA';
     case DIKONVERSI = 'DIKONVERSI';
+    case MENUNGGU_PENGECEKAN_TEKNIS = 'MENUNGGU_PENGECEKAN_TEKNIS';
 
     /**
      * State machine DISEDERHANAKAN (revisi Juli 2026) — survey & pemasangan
@@ -27,6 +28,7 @@ enum StatusPermohonanEnum: string
             self::DIJADWALKAN => [self::DITUNDA, self::DIKONVERSI],
             self::DITUNDA => [self::DIJADWALKAN],
             self::DITOLAK, self::DIKONVERSI => [],
+            self::MENUNGGU_PENGECEKAN_TEKNIS => [self::MENUNGGU_VERIFIKASI, self::DITOLAK],
         };
     }
 
