@@ -23,15 +23,27 @@ class PendapatanController extends Controller
         7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
     ];
 
-    /** Daftar pelanggan untuk dropdown multi-select. */
+    /** Daftar pelanggan untuk dropdown multi-select (dengan provinsi/kota untuk filter realtime). */
     public function pelangganList()
     {
-        return response()->json([
-            'data' => Pelanggan::query()
-                ->select('id', 'nama_lengkap', 'nomor_pelanggan')
-                ->orderBy('nama_lengkap')
-                ->get(),
-        ]);
+        $data = Pelanggan::query()
+            ->select('id', 'nama_lengkap', 'nomor_pelanggan')
+            ->with(['layananInternet' => fn ($q) => $q->select('id', 'pelanggan_id', 'provinsi', 'kota')])
+            ->orderBy('nama_lengkap')
+            ->get()
+            ->map(function (Pelanggan $p) {
+                $layanan = $p->layananInternet->first();
+
+                return [
+                    'id' => $p->id,
+                    'nama_lengkap' => $p->nama_lengkap,
+                    'nomor_pelanggan' => $p->nomor_pelanggan,
+                    'provinsi' => $layanan?->provinsi,
+                    'kota' => $layanan?->kota,
+                ];
+            });
+
+        return response()->json(['data' => $data]);
     }
 
     /** Ringkasan pendapatan dengan filter tahun, bulan[], pelanggan_ids[]. */
@@ -95,6 +107,7 @@ class PendapatanController extends Controller
         ]);
 
         $slug = str($this->labelPeriode($request))->slug()->toString();
+
         return $pdf->stream("laporan-pendapatan-{$slug}.pdf");
     }
 
@@ -111,6 +124,7 @@ class PendapatanController extends Controller
         ), \Maatwebsite\Excel\Excel::XLSX);
 
         $slug = str($this->labelPeriode($request))->slug()->toString();
+
         return response($file, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"laporan-pendapatan-{$slug}.xlsx\"",
@@ -203,8 +217,9 @@ class PendapatanController extends Controller
                     return $l->tanggal_aktif && $l->tanggal_aktif->lte($akhirBulan);
                 });
 
-                if (!$aktifDiBulan) {
+                if (! $aktifDiBulan) {
                     $row['cells'][] = ['status' => 'belum_berlangganan', 'label' => 'Belum Berlangganan'];
+
                     continue;
                 }
 
@@ -217,8 +232,9 @@ class PendapatanController extends Controller
                     }
                 }
 
-                if (!$tagihanDitemukan) {
+                if (! $tagihanDitemukan) {
                     $row['cells'][] = ['status' => 'belum_berlangganan', 'label' => 'Belum Berlangganan'];
+
                     continue;
                 }
 
@@ -314,7 +330,7 @@ class PendapatanController extends Controller
     {
         $raw = $request->input('bulan');
 
-        if (!is_array($raw) || count($raw) === 0) {
+        if (! is_array($raw) || count($raw) === 0) {
             return null;
         }
 
@@ -345,7 +361,7 @@ class PendapatanController extends Controller
     {
         $rows = (clone $query)
             ->whereMonth('dibayar_pada', $bulan)
-            ->selectRaw("date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total")
+            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
             ->groupBy('tanggal')
             ->get()
             ->mapWithKeys(fn ($item) => [(string) $item->tanggal => (float) $item->total]);
@@ -363,7 +379,7 @@ class PendapatanController extends Controller
     private function trenBulananFiltered(Builder $query, int $tahun, array $bulanList): array
     {
         $rows = (clone $query)
-            ->selectRaw("date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total")
+            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
             ->groupBy('tanggal')
             ->get();
 
@@ -384,7 +400,7 @@ class PendapatanController extends Controller
     private function trenBulanan(Builder $query, int $tahun): array
     {
         $rows = (clone $query)
-            ->selectRaw("date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total")
+            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
             ->groupBy('tanggal')
             ->get();
 

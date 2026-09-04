@@ -72,6 +72,8 @@ class PelangganController extends Controller
                 'catatan_custom' => $data['catatan_custom'] ?? null,
                 'alamat_pemasangan' => $data['alamat_pemasangan'],
                 'detail_alamat' => $data['detail_alamat'] ?? null,
+                'provinsi' => $data['provinsi'] ?? null,
+                'kota' => $data['kota'] ?? null,
                 'latitude' => $data['latitude'],
                 'longitude' => $data['longitude'],
             ]);

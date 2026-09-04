@@ -31,6 +31,8 @@ class PermohonanLayanan extends Model
         'alasan',
         'alamat_pemasangan',
         'detail_alamat',
+        'provinsi',
+        'kota',
         'paket_internet_id_baru',
         'latitude',
         'longitude',

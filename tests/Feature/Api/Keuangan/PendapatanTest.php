@@ -155,4 +155,27 @@ class PendapatanTest extends TestCase
 
         $this->getJson('/api/admin/keuangan/pendapatan')->assertForbidden();
     }
+
+    public function test_pelanggan_list_menyertakan_provinsi_dan_kota_per_pelanggan(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        $pelanggan = Pelanggan::factory()->create(['nama_lengkap' => 'A Sleman']);
+        LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusLayananEnum::AKTIF,
+            'provinsi' => 'Daerah Istimewa Yogyakarta',
+            'kota' => 'Sleman',
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/keuangan/pendapatan/pelanggan-list')
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $pelanggan->id,
+                'nama_lengkap' => 'A Sleman',
+                'provinsi' => 'Daerah Istimewa Yogyakarta',
+                'kota' => 'Sleman',
+            ]);
+    }
 }

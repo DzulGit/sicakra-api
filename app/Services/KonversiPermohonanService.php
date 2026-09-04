@@ -14,7 +14,6 @@ use App\Models\RiwayatPerubahanPaket;
 use App\Models\RiwayatRelokasi;
 use App\Repositories\Contracts\LayananInternetRepositoryInterface;
 use Illuminate\Support\Facades\DB;
-use App\Services\GenerateTagihanService;
 
 class KonversiPermohonanService
 {
@@ -138,6 +137,8 @@ class KonversiPermohonanService
 
         $update = [
             'alamat_pemasangan' => $permohonan->alamat_pemasangan,
+            'provinsi' => $permohonan->provinsi,
+            'kota' => $permohonan->kota,
             'latitude' => $permohonan->latitude,
             'longitude' => $permohonan->longitude,
         ];
@@ -168,6 +169,8 @@ class KonversiPermohonanService
             'harga_custom' => $permohonan->harga_custom,
             'alamat_pemasangan' => $permohonan->alamat_pemasangan,
             'detail_alamat' => $permohonan->detail_alamat,
+            'provinsi' => $permohonan->provinsi,
+            'kota' => $permohonan->kota,
             'latitude' => $permohonan->latitude,
             'longitude' => $permohonan->longitude,
             'status' => StatusLayananEnum::AKTIF,
