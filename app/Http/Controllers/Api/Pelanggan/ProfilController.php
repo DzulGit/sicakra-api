@@ -8,6 +8,7 @@ use App\Http\Requests\Pelanggan\UbahProfilRequest;
 use App\Http\Requests\Pelanggan\UbahUsernameRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ProfilController extends Controller
@@ -63,7 +64,7 @@ class ProfilController extends Controller
 
         $pelanggan = $request->user();
         
-        $path = $request->file('foto')->store('profil', 's3');
+        $path = Storage::disk('public')->putFile('profil', $request->file('foto'));
         $pelanggan->update(['foto_profil' => $path]);
 
         return response()->json(['data' => $pelanggan->fresh()]);

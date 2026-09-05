@@ -14,6 +14,7 @@ use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class PelangganController extends Controller
 {
@@ -44,10 +45,10 @@ class PelangganController extends Controller
 
         $pelanggan = DB::transaction(function () use ($data, $request) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? $request->file('foto_ktp')->store('ktp', 's3')
+                ? Storage::disk('public')->putFile('ktp', $request->file('foto_ktp'))
                 : null;
             $pathSelfie = $request->hasFile('foto_selfie_ktp')
-                ? $request->file('foto_selfie_ktp')->store('selfie-ktp', 's3')
+                ? Storage::disk('public')->putFile('selfie-ktp', $request->file('foto_selfie_ktp'))
                 : null;
 
             $pelanggan = Pelanggan::create([

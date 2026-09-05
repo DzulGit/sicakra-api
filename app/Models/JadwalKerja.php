@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Storage;
 
 class JadwalKerja extends Model
 {
@@ -54,5 +55,13 @@ class JadwalKerja extends Model
     {
         return $this->belongsToMany(Admin::class, 'jadwal_kerja_teknisi', 'jadwal_kerja_id', 'admin_id')
             ->withTimestamps();
+    }
+
+    public function getFotoDokumentasiUrlAttribute(): array
+    {
+        return array_map(
+            fn (string $path) => Storage::url($path),
+            $this->foto_dokumentasi ?? [],
+        );
     }
 }

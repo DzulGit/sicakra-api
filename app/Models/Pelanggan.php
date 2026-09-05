@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
 class Pelanggan extends Authenticatable
@@ -54,5 +55,20 @@ class Pelanggan extends Authenticatable
     public function layananInternet(): HasMany
     {
         return $this->hasMany(LayananInternet::class, 'pelanggan_id');
+    }
+
+    public function getFotoKtpUrlAttribute(): ?string
+    {
+        return $this->foto_ktp ? Storage::url($this->foto_ktp) : null;
+    }
+
+    public function getFotoSelfieKtpUrlAttribute(): ?string
+    {
+        return $this->foto_selfie_ktp ? Storage::url($this->foto_selfie_ktp) : null;
+    }
+
+    public function getFotoProfilUrlAttribute(): ?string
+    {
+        return $this->foto_profil ? Storage::url($this->foto_profil) : null;
     }
 }

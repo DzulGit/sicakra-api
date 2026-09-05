@@ -10,6 +10,7 @@ use App\Models\JadwalKerja;
 use App\Repositories\Contracts\JadwalKerjaRepositoryInterface;
 use App\Services\JadwalKerjaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class JadwalKerjaController extends Controller
 {
@@ -46,7 +47,7 @@ class JadwalKerjaController extends Controller
 
         $fotoDokumentasi = [];
         foreach ($request->file('foto_dokumentasi', []) as $file) {
-            $fotoDokumentasi[] = $file->store('dokumentasi-pekerjaan', 's3');
+            $fotoDokumentasi[] = Storage::disk('public')->putFile('dokumentasi-pekerjaan', $file);
         }
 
         $hasil = $this->jadwalKerjaService->isiHasil(

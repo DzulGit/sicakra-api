@@ -6,6 +6,7 @@ use App\Enums\StatusLaporanEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class LaporanKendala extends Model
 {
@@ -42,5 +43,15 @@ class LaporanKendala extends Model
     public function ditutupOleh(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'ditutup_oleh');
+    }
+
+    public function getFotoUrlAttribute(): array
+    {
+        $paths = is_array($this->foto) ? $this->foto : json_decode($this->foto ?? '[]', true);
+
+        return array_map(
+            fn (string $path) => Storage::url($path),
+            $paths ?: [],
+        );
     }
 }
