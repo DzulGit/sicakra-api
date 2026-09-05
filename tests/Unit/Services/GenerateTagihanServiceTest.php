@@ -26,6 +26,7 @@ class GenerateTagihanServiceTest extends TestCase
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => '2026-01-15',
         ]);
+        $layanan->pelanggan->update(['tanggal_tagihan' => 15]);
 
         $tagihan = app(GenerateTagihanService::class)
             ->generateUntukLayanan($layanan, 7, 2026);
@@ -86,6 +87,7 @@ class GenerateTagihanServiceTest extends TestCase
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => '2026-01-31', // aktif di tanggal 31
         ]);
+        $layanan->pelanggan->update(['tanggal_tagihan' => 31]);
 
         // Februari 2026 cuma 28 hari (bukan tahun kabisat)
         $tagihan = app(GenerateTagihanService::class)

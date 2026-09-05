@@ -41,11 +41,9 @@ class DashboardKeuanganController extends Controller
 
         $pendapatanPerBulan = Pembayaran::where('status', StatusTransaksiEnum::BERHASIL)
             ->where('dibayar_pada', '>=', now()->subMonths(11)->startOfMonth())
-            ->selectRaw("to_char(dibayar_pada, 'YYYY-MM') as bulan, SUM(jumlah_dibayar) as total")
-            ->groupBy('bulan')
-            ->orderBy('bulan')
-            ->get()
-            ->mapWithKeys(fn ($item) => [$item->bulan => (float) $item->total]);
+            ->get(['dibayar_pada', 'jumlah_dibayar'])
+            ->groupBy(fn (Pembayaran $p) => $p->dibayar_pada->format('Y-m'))
+            ->map(fn ($items) => (float) $items->sum('jumlah_dibayar'));
 
         $trenPendapatan = [];
         for ($i = 11; $i >= 0; $i--) {
@@ -104,6 +102,6 @@ class DashboardKeuanganController extends Controller
 
     private function rupiah($nilai): string
     {
-        return 'Rp ' . number_format((float) ($nilai ?? 0), 0, ',', '.');
+        return 'Rp '.number_format((float) ($nilai ?? 0), 0, ',', '.');
     }
 }

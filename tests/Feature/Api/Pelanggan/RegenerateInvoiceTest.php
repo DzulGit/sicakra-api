@@ -33,6 +33,8 @@ class RegenerateInvoiceTest extends TestCase
     private function buatTagihanKedaluwarsa(bool $sudahBayar = false): int
     {
         $layanan = LayananInternet::factory()->create();
+        $pelanggan = Pelanggan::factory()->sudahAktif()->create();
+        $layanan->update(['pelanggan_id' => $pelanggan->id]);
         $tagihan = Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
             'nomor_tagihan' => 'INV000001',
@@ -40,7 +42,7 @@ class RegenerateInvoiceTest extends TestCase
             'xendit_invoice_retry_count' => 1,
         ]);
 
-        Sanctum::actingAs($layanan->pelanggan);
+        Sanctum::actingAs($pelanggan);
 
         return $tagihan->id;
     }
@@ -73,13 +75,15 @@ class RegenerateInvoiceTest extends TestCase
     public function test_tidak_bisa_regenerate_setelah_maksimal_retry(): void
     {
         $layanan = LayananInternet::factory()->create();
+        $pelanggan = Pelanggan::factory()->sudahAktif()->create();
+        $layanan->update(['pelanggan_id' => $pelanggan->id]);
         $tagihan = Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
             'nomor_tagihan' => 'INV000001',
             'status_pembayaran' => StatusPembayaranEnum::KEDALUWARSA,
             'xendit_invoice_retry_count' => 3,
         ]);
-        Sanctum::actingAs($layanan->pelanggan);
+        Sanctum::actingAs($pelanggan);
 
         $this->postJson("/api/pelanggan/tagihan/{$tagihan->id}/regenerate-invoice")
             ->assertStatus(422);
@@ -88,11 +92,13 @@ class RegenerateInvoiceTest extends TestCase
     public function test_pelanggan_lain_tidak_bisa_regenerate_tagihan_milik_orang_lain(): void
     {
         $layanan = LayananInternet::factory()->create();
+        $pelanggan = Pelanggan::factory()->sudahAktif()->create();
+        $layanan->update(['pelanggan_id' => $pelanggan->id]);
         $tagihan = Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
             'status_pembayaran' => StatusPembayaranEnum::KEDALUWARSA,
         ]);
-        $pelangganLain = Pelanggan::factory()->create();
+        $pelangganLain = Pelanggan::factory()->sudahAktif()->create();
         Sanctum::actingAs($pelangganLain);
 
         $this->postJson("/api/pelanggan/tagihan/{$tagihan->id}/regenerate-invoice")

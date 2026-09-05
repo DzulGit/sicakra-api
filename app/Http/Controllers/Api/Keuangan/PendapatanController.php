@@ -445,7 +445,7 @@ class PendapatanController extends Controller
         return implode(', ', $namaBulan).' '.$tahun;
     }
 
-    private function labelStatus(string $status): string
+    private function labelStatus(StatusPembayaranEnum $status): string
     {
         return match ($status) {
             StatusPembayaranEnum::BELUM_BAYAR => 'Belum Bayar',
