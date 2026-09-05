@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\StatusLayananEnum;
+use App\Enums\StatusPermohonanEnum;
 use App\Enums\TipePaketEnum;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
@@ -18,7 +19,6 @@ class LayananInternetFactory extends Factory
     {
         return [
             'nomor_layanan' => 'LYN'.str_pad((string) fake()->unique()->numberBetween(1, 999999), 6, '0', STR_PAD_LEFT),
-            'permohonan_layanan_id' => PermohonanLayanan::factory(),
             'pelanggan_id' => Pelanggan::factory(),
             'paket_internet_id' => PaketInternet::factory(),
             'tipe_paket' => TipePaketEnum::REGULER,
@@ -28,5 +28,20 @@ class LayananInternetFactory extends Factory
             'status' => StatusLayananEnum::AKTIF,
             'tanggal_aktif' => now()->toDateString(),
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterMaking(function (LayananInternet $layanan) {
+            if (! $layanan->permohonan_layanan_id) {
+                $permohonan = PermohonanLayanan::factory()->create([
+                    'pelanggan_id' => $layanan->pelanggan_id,
+                    'paket_internet_id' => $layanan->paket_internet_id,
+                    'status' => StatusPermohonanEnum::DIKONVERSI,
+                ]);
+
+                $layanan->setAttribute('permohonan_layanan_id', $permohonan->id);
+            }
+        });
     }
 }

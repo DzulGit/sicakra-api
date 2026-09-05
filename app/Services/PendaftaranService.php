@@ -7,6 +7,7 @@ use App\Models\Pelanggan;
 use App\Models\PermohonanLayanan;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class PendaftaranService
 {
@@ -59,6 +60,6 @@ class PendaftaranService
 
     private function simpanFoto(UploadedFile $file, string $folder): string
     {
-        return $file->store($folder, 's3');
+        return Storage::disk('public')->putFile($folder, $file);
     }
 }

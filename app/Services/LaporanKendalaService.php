@@ -15,6 +15,7 @@ use App\Notifications\LaporanKendalaStatusNotification;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 
 class LaporanKendalaService
 {
@@ -32,7 +33,7 @@ class LaporanKendalaService
             if (isset($data['foto']) && is_array($data['foto'])) {
                 $paths = [];
                 foreach ($data['foto'] as $file) {
-                    $paths[] = $file->store('laporan-kendala', 's3');
+                    $paths[] = Storage::disk('public')->putFile('laporan-kendala', $file);
                 }
 
                 // Simpan sebagai JSON agar mendukung banyak gambar
