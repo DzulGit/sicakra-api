@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\BuatPasswordPelangganRequest;
 use App\Http\Requests\Auth\LoginPelangganRequest;
+use App\Http\Requests\Auth\LoginPertamaPelangganRequest;
 use App\Models\Pelanggan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -47,6 +49,59 @@ class AuthPelangganController extends Controller
 
         return response()->json([
             'message' => 'Berhasil logout.',
+        ]);
+    }
+
+    /** Login pertama pelanggan baru (belum pernah buat password). */
+    public function loginPertama(LoginPertamaPelangganRequest $request)
+    {
+        $data = $request->validated();
+
+        $pelanggan = Pelanggan::where('nomor_pelanggan', $data['nomor_pelanggan'])
+            ->where('nomor_hp', $data['nomor_hp'])
+            ->first();
+
+        if (! $pelanggan) {
+            throw ValidationException::withMessages([
+                'nomor_pelanggan' => ['Nomor pelanggan atau nomor HP tidak ditemukan.'],
+            ]);
+        }
+
+        if ($pelanggan->password_sudah_dibuat) {
+            throw ValidationException::withMessages([
+                'nomor_pelanggan' => ['Anda sudah pernah membuat password. Silakan login dengan username & password Anda.'],
+            ]);
+        }
+
+        $token = $pelanggan->createToken('pelanggan-token')->plainTextToken;
+
+        return response()->json([
+            'data' => [
+                'pelanggan' => $pelanggan,
+                'token' => $token,
+                'wajib_buat_password' => true,
+            ],
+        ]);
+    }
+
+    /** Buat password pertama kali — harus login dulu (auth:sanctum) via login-pertama. */
+    public function buatPassword(BuatPasswordPelangganRequest $request)
+    {
+        $pelanggan = $request->user();
+
+        $pelanggan->update([
+            'password' => $request->validated()['password'],
+            'password_sudah_dibuat' => true,
+        ]);
+
+        $token = $pelanggan->createToken('pelanggan-token')->plainTextToken;
+
+        return response()->json([
+            'data' => [
+                'pelanggan' => $pelanggan->fresh(),
+                'token' => $token,
+                'wajib_buat_password' => false,
+            ],
         ]);
     }
 }

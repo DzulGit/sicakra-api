@@ -15,6 +15,6 @@ class LaporanKendalaFilter extends QueryFilter
     // ?kategori_kendala=Jaringan+Putus
     protected function kategoriKendala(Builder $builder, string $nilai): void
     {
-        $builder->where('kategori_kendala', 'ilike', "%{$nilai}%");
+        $builder->whereRaw('LOWER(kategori_kendala) LIKE ?', ['%'.strtolower($nilai).'%']);
     }
 }

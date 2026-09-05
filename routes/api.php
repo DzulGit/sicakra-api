@@ -86,6 +86,8 @@ Route::prefix('admin')->group(function () {
             Route::get('pelanggan', [PelangganController::class, 'index']);
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
+            Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
+            Route::post('pelanggan/tanggal-tagihan/bulk', [PelangganController::class, 'bulkAturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
         });
 
@@ -145,7 +147,12 @@ Route::prefix('pelanggan')->group(function () {
     Route::post('reset-password', [LupaPasswordController::class, 'reset'])
         ->middleware('throttle:login');
 
-    Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan'])->group(function () {
+    Route::post('login-pertama', [AuthPelangganController::class, 'loginPertama'])
+        ->middleware('throttle:login-pertama');
+
+    Route::middleware(['auth:sanctum', 'tipe-pengguna:pelanggan', 'pastikan.password'])->group(function () {
+        Route::post('buat-password', [AuthPelangganController::class, 'buatPassword'])
+            ->withoutMiddleware('pastikan.password');
         Route::post('logout', [AuthPelangganController::class, 'logout']);
 
         // ----- Notifikasi -----

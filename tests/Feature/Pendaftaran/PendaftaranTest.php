@@ -39,7 +39,7 @@ class PendaftaranTest extends TestCase
         $response->assertCreated();
 
         $this->assertDatabaseHas('pelanggan', ['nik' => '1234567890123456']);
-        $this->assertDatabaseHas('permohonan_layanan', ['status' => 'MENUNGGU_VERIFIKASI']);
+        $this->assertDatabaseHas('permohonan_layanan', ['status' => 'MENUNGGU_PENGECEKAN_TEKNIS']);
     }
 
     public function test_pendaftaran_dengan_paket_custom_berhasil_tanpa_paket_internet_id(): void

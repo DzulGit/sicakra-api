@@ -45,16 +45,6 @@ class Admin extends Authenticatable
     return $this->hasMany(PermohonanLayanan::class, 'diproses_oleh');
   }
 
-  public function jadwalSurvey(): HasMany
-  {
-    return $this->hasMany(JadwalSurvey::class, 'admin_id');
-  }
-
-  public function jadwalPemasangan(): HasMany
-  {
-    return $this->hasMany(JadwalPemasangan::class, 'admin_id');
-  }
-
   public function laporanDitugaskan(): HasMany
   {
     return $this->hasMany(LaporanKendala::class, 'ditugaskan_ke');

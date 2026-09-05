@@ -25,10 +25,15 @@ class PelangganFactory extends Factory
     /** Pelanggan yang sudah aktif & pernah buat password (skip alur login-pertama). */
     public function sudahAktif(): static
     {
-        return $this->state(fn () => [
-            'nomor_pelanggan' => 'PLG'.str_pad((string) fake()->unique()->numberBetween(1, 999999), 6, '0', STR_PAD_LEFT),
-            'password' => 'password123',
-            'password_sudah_dibuat' => true,
-        ]);
+        return $this->state(function () {
+            $nomor = 'PLG'.str_pad((string) fake()->unique()->numberBetween(1, 999999), 6, '0', STR_PAD_LEFT);
+
+            return [
+                'nomor_pelanggan' => $nomor,
+                'username' => $nomor,
+                'password' => 'password123',
+                'password_sudah_dibuat' => true,
+            ];
+        });
     }
 }

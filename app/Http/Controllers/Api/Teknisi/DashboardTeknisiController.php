@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Api\Teknisi;
 use App\Enums\HasilKerjaEnum;
 use App\Enums\JenisPermohonanEnum;
 use App\Enums\StatusLaporanEnum;
+use App\Enums\StatusPermohonanEnum;
 use App\Http\Controllers\Controller;
 use App\Models\JadwalKerja;
 use App\Models\LaporanKendala;
-use Illuminate\Http\Request;
 use App\Models\PermohonanLayanan;
-use App\Enums\StatusPermohonanEnum;
-use App\Services\PermohonanLayananService;
 use App\Repositories\Contracts\PermohonanLayananRepositoryInterface;
+use App\Services\PermohonanLayananService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardTeknisiController extends Controller
@@ -29,7 +29,7 @@ class DashboardTeknisiController extends Controller
 
         $milikTeknisi = fn ($query) => $query->whereHas('teknisi', fn ($q) => $q->where('admin_id', $teknisiId));
 
-        $jadwalHariIni = JadwalKerja::where('tanggal_kerja', $hariIni);
+        $jadwalHariIni = JadwalKerja::whereDate('tanggal_kerja', $hariIni);
         $belumSelesai = JadwalKerja::whereNull('hasil');
         $selesaiHariIni = JadwalKerja::where('hasil', HasilKerjaEnum::SELESAI)->whereDate('updated_at', $hariIni);
         $tiketAktif = LaporanKendala::where('ditugaskan_ke', $teknisiId)->whereIn('status', [

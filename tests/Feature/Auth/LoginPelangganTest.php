@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Pelanggan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class LoginPelangganTest extends TestCase
@@ -82,13 +83,12 @@ class LoginPelangganTest extends TestCase
 
     public function test_login_normal_berhasil_setelah_password_dibuat(): void
     {
-        Pelanggan::factory()->sudahAktif()->create([
-            'nomor_pelanggan' => 'PLG000005',
-            'password' => 'password123',
+        $pelanggan = Pelanggan::factory()->sudahAktif()->create([
+            'password' => Hash::make('password123'),
         ]);
 
         $response = $this->postJson('/api/pelanggan/login', [
-            'nomor_pelanggan' => 'PLG000005',
+            'username' => $pelanggan->username,
             'password' => 'password123',
         ]);
 
