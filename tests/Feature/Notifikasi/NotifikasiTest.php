@@ -26,7 +26,7 @@ class NotifikasiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('s3');
+        Storage::fake('public');
     }
 
     public function test_admin_operasional_dan_super_admin_mendapat_notifikasi_saat_pendaftar_baru(): void

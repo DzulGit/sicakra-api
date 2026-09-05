@@ -37,7 +37,7 @@ class IsiHasilJadwalKerjaTest extends TestCase
 
     public function test_hasil_selesai_membutuhkan_foto_dan_koordinat(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
         $teknisi = Admin::factory()->teknisi()->create();
         $jadwal = $this->buatJadwalUntukTeknisi($teknisi);
 
@@ -50,7 +50,7 @@ class IsiHasilJadwalKerjaTest extends TestCase
 
     public function test_hasil_selesai_dengan_foto_dan_koordinat_berhasil(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
         $teknisi = Admin::factory()->teknisi()->create();
         $jadwal = $this->buatJadwalUntukTeknisi($teknisi);
 

@@ -15,7 +15,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pelanggan_baru_bisa_mendaftar(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         $paket = PaketInternet::factory()->create();
 
@@ -44,7 +44,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pendaftaran_dengan_paket_custom_berhasil_tanpa_paket_internet_id(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         $response = $this->postJson('/api/pendaftaran', [
             'nama_lengkap' => 'Siti Aminah',
@@ -74,7 +74,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pendaftaran_gagal_kalau_nik_sudah_terdaftar(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         Pelanggan::factory()->create(['nik' => '1234567890123456']);
 
@@ -101,7 +101,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pendaftaran_berhasil_tanpa_foto_selfie(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         $response = $this->postJson('/api/pendaftaran', [
             'nama_lengkap' => 'Budi Santoso',
@@ -126,7 +126,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pendaftaran_gagal_tanpa_foto_ktp(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         $response = $this->postJson('/api/pendaftaran', [
             'nama_lengkap' => 'Budi Santoso',
@@ -150,7 +150,7 @@ class PendaftaranTest extends TestCase
 
     public function test_pendaftaran_gagal_tanpa_email(): void
     {
-        Storage::fake('s3');
+        Storage::fake('public');
 
         $response = $this->postJson('/api/pendaftaran', [
             'nama_lengkap' => 'Budi Santoso',
