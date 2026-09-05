@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\StatusPermohonanEnum;
 use App\Exceptions\TransisiStatusTidakValidException;
 use App\Models\Admin;
+use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
 use App\Models\RiwayatStatusPermohonan;
 use App\Repositories\Contracts\PermohonanLayananRepositoryInterface;
@@ -19,7 +20,9 @@ class PermohonanLayananService
 
     /**
      * Buat permohonan baru (pemasangan_baru ATAU relokasi).
-     * Status awal selalu MENUNGGU_VERIFIKASI.
+     * Status awal MENUNGGU_PENGECEKAN_TEKNIS — teknisi mengecek kelayakan
+     * jaringan dulu, lalu Operasional/Teknisi memindahkan ke MENUNGGU_VERIFIKASI
+     * atau DITOLAK.
      */
     public function buatPermohonan(array $data): PermohonanLayanan
     {
@@ -30,14 +33,14 @@ class PermohonanLayananService
                 'PMH'
             );
             $data['status'] = StatusPermohonanEnum::MENUNGGU_PENGECEKAN_TEKNIS;
-            
+
             $data['tipe_paket'] = $data['tipe_paket'] ?? 'reguler';
 
             // Ambil data layanan sebelumnya jika latitude/longitude kosong (misal: ganti paket)
             if (empty($data['latitude']) || empty($data['longitude']) || empty($data['alamat_pemasangan'])) {
-                if (!empty($data['layanan_internet_id'])) {
-                    $layanan = \App\Models\LayananInternet::find($data['layanan_internet_id']);
-                    
+                if (! empty($data['layanan_internet_id'])) {
+                    $layanan = LayananInternet::find($data['layanan_internet_id']);
+
                     $data['alamat_pemasangan'] = $data['alamat_pemasangan'] ?? $layanan->alamat_pemasangan ?? 'Alamat dari layanan aktif';
                     $data['detail_alamat'] = $data['detail_alamat'] ?? $layanan->detail_alamat ?? null;
                     $data['latitude'] = $data['latitude'] ?? $layanan->latitude ?? '0.000000';
