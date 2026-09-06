@@ -25,6 +25,10 @@ class AuthAdminController extends Controller
             ]);
         }
 
+        // Menimpa token lama milik akun ini supaya tidak ada sesi ganda
+        // yang tersisa saat akun di-login ulang (switch account / relogin).
+        $admin->tokens()->delete();
+
         $token = $admin->createToken('admin-token')->plainTextToken;
 
         return response()->json([

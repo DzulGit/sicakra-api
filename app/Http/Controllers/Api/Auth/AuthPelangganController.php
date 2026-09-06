@@ -33,6 +33,10 @@ class AuthPelangganController extends Controller
             ]);
         }
 
+        // Menimpa token lama milik akun ini supaya tidak ada sesi ganda
+        // yang tersisa saat akun di-login ulang (switch account / relogin).
+        $pelanggan->tokens()->delete();
+
         $token = $pelanggan->createToken('pelanggan-token')->plainTextToken;
 
         return response()->json([

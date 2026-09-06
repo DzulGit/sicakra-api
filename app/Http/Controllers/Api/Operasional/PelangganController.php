@@ -9,7 +9,6 @@ use App\Http\Requests\Operasional\BuatPelangganRequest;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Repositories\Contracts\PelangganRepositoryInterface;
-use App\Services\AktivasiAkunPelangganService;
 use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
 use Illuminate\Http\Request;
@@ -21,7 +20,6 @@ class PelangganController extends Controller
     public function __construct(
         private readonly PelangganRepositoryInterface $pelangganRepository,
         private readonly SiklusPenagihanService $siklusPenagihanService,
-        private readonly AktivasiAkunPelangganService $aktivasiAkunPelangganService,
         private readonly PermohonanLayananService $permohonanLayananService,
     ) {}
 
@@ -33,17 +31,17 @@ class PelangganController extends Controller
     }
 
     /**
-     * Admin Operasional membuat pelanggan baru (pendaftaran offline/telepon).
-     * Membuat pelanggan + permohonan + langsung generate kredensial (nomor_pelanggan,
-     * username, password) supaya admin bisa informasikan ke pelanggan.
-     *
-     * Reuse logic yang sama dari PendaftaranService + AktivasiAkunPelangganService.
+     * Admin Operasional mendaftarkan pelanggan baru (pendaftaran offline/telepon).
+     * Hanya mendaftarkan — membuat baris pelanggan + permohonan pemasangan_baru
+     * (status MENUNGGU_VERIFIKASI), TANPA membuat akun (nomor_pelanggan/
+     * username/password). Akun diaktifkan belakangan saat permohonan dikonversi
+     * menjadi layanan aktif (KonversiPermohonanService).
      */
     public function buatBaru(BuatPelangganRequest $request)
     {
         $data = $request->validated();
 
-        $pelanggan = DB::transaction(function () use ($data, $request) {
+        $permohonan = DB::transaction(function () use ($data, $request) {
             $pathKtp = $request->hasFile('foto_ktp')
                 ? Storage::disk('public')->putFile('ktp', $request->file('foto_ktp'))
                 : null;
@@ -61,9 +59,7 @@ class PelangganController extends Controller
                 'password_sudah_dibuat' => false,
             ]);
 
-            $this->aktivasiAkunPelangganService->aktivasiJikaLayananPertama($pelanggan);
-
-            $this->permohonanLayananService->buatPermohonan([
+            return $this->permohonanLayananService->buatPermohonan([
                 'pelanggan_id' => $pelanggan->id,
                 'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
                 'paket_internet_id' => $data['paket_internet_id'] ?? null,
@@ -78,16 +74,14 @@ class PelangganController extends Controller
                 'latitude' => $data['latitude'],
                 'longitude' => $data['longitude'],
             ]);
-
-            return $pelanggan->fresh();
         });
 
         return response()->json([
-            'message' => 'Pelanggan berhasil dibuat.',
+            'message' => 'Pelanggan berhasil didaftarkan.',
             'data' => [
-                'pelanggan' => $pelanggan,
-                'username' => $pelanggan->username,
-                'password' => $pelanggan->username, // password = nomor_pelanggan = username
+                'id' => $permohonan->id,
+                'nomor_permohonan' => $permohonan->nomor_permohonan,
+                'nama_lengkap' => $permohonan->pelanggan->nama_lengkap,
             ],
         ], 201);
     }

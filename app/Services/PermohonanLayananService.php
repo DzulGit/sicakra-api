@@ -20,9 +20,9 @@ class PermohonanLayananService
 
     /**
      * Buat permohonan baru (pemasangan_baru ATAU relokasi).
-     * Status awal MENUNGGU_PENGECEKAN_TEKNIS — teknisi mengecek kelayakan
-     * jaringan dulu, lalu Operasional/Teknisi memindahkan ke MENUNGGU_VERIFIKASI
-     * atau DITOLAK.
+     * Status awal MENUNGGU_VERIFIKASI — langsung ditangani Operasional untuk
+     * verifikasi data & menjadwalkan survey/pemasangan (tanpa tahap pengecekan
+     * lokasi oleh teknisi).
      */
     public function buatPermohonan(array $data): PermohonanLayanan
     {
@@ -32,7 +32,7 @@ class PermohonanLayananService
                 'nomor_permohonan',
                 'PMH'
             );
-            $data['status'] = StatusPermohonanEnum::MENUNGGU_PENGECEKAN_TEKNIS;
+            $data['status'] = StatusPermohonanEnum::MENUNGGU_VERIFIKASI;
 
             $data['tipe_paket'] = $data['tipe_paket'] ?? 'reguler';
 
@@ -57,9 +57,9 @@ class PermohonanLayananService
             $this->catatRiwayat(
                 $permohonan,
                 null,
-                StatusPermohonanEnum::MENUNGGU_PENGECEKAN_TEKNIS,
+                StatusPermohonanEnum::MENUNGGU_VERIFIKASI,
                 null,
-                'Permohonan diajukan, menunggu pengecekan kelayakan jaringan.'
+                'Permohonan diajukan, menunggu verifikasi & penjadwalan survey/pemasangan.'
             );
 
             return $permohonan;
