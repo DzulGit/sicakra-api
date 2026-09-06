@@ -102,10 +102,6 @@ Route::prefix('admin')->group(function () {
             Route::get('laporan-kendala', [TeknisiLaporanKendalaController::class, 'index']);
             Route::get('laporan-kendala/{laporanKendala}', [TeknisiLaporanKendalaController::class, 'show']);
             Route::patch('laporan-kendala/{laporanKendala}/selesaikan', [TeknisiLaporanKendalaController::class, 'selesaikan']);
-
-            Route::get('dashboard/antrean-pengecekan', [DashboardTeknisiController::class, 'antreanPengecekan']);
-            Route::post('dashboard/permohonan/{permohonan}/layak-pasang', [DashboardTeknisiController::class, 'layakPasang']);
-            Route::post('dashboard/permohonan/{permohonan}/tolak', [DashboardTeknisiController::class, 'tolak']);
         });
 
         // ----- Keuangan -----
