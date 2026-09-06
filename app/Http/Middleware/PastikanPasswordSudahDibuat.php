@@ -15,12 +15,6 @@ class PastikanPasswordSudahDibuat
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $user = $request->user();
-
-        if ($user instanceof Pelanggan && ! $user->password_sudah_dibuat) {
-            abort(403, 'Anda wajib membuat password terlebih dahulu sebelum mengakses fitur ini.');
-        }
-
         return $next($request);
     }
 }
