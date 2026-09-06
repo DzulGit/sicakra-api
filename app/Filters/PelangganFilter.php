@@ -19,7 +19,13 @@ class PelangganFilter extends QueryFilter
     protected function jenis(Builder $builder, string $nilai): void
     {
         if ($nilai === 'aktif') {
-            $builder->whereNotNull('nomor_pelanggan');
+            $builder
+                ->whereNotNull('nomor_pelanggan')
+                ->whereHas('layananInternet', function (Builder $query) {
+                    $query
+                        ->where('status', 'aktif')
+                        ->whereHas('tagihan');
+                });
         }
     }
 }

@@ -23,7 +23,6 @@ class KonversiPermohonanService
         private readonly PermohonanLayananService $permohonanLayananService,
         private readonly AktivasiAkunPelangganService $aktivasiAkunPelangganService,
         private readonly SiklusPenagihanService $siklusPenagihanService,
-        private readonly GenerateTagihanService $generateTagihanService,
     ) {}
 
     public function konversi(PermohonanLayanan $permohonan, ?Admin $diprosesOleh = null): LayananInternet
@@ -55,15 +54,8 @@ class KonversiPermohonanService
             ? (int) ($permohonan->paketInternet?->promo_gratis_bulan ?? 0)
             : 0;
 
-        // 1. Buat layanan dengan status otomatis aktif dari bawaan sistem
+        // Buat layanan dengan status otomatis aktif dari bawaan sistem
         $layanan = $this->buatLayananDariPermohonan($permohonan, $bebasBulanPromo);
-
-        // 2. Generate tagihan pertama seketika
-        $this->generateTagihanService->generateUntukLayanan(
-            $layanan,
-            now()->month,
-            now()->year
-        );
 
         return $layanan;
     }

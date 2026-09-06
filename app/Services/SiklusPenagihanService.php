@@ -73,11 +73,9 @@ class SiklusPenagihanService
             $tanggal = $this->siklusBerikutnya($layanan, $tanggal);
         }
 
-        if ($tanggal->lte($hariIni)) {
-            $this->prosesSatuLayanan($layanan, $tanggal);
-        } else {
-            $layanan->update(['tanggal_mulai_penagihan' => $tanggal->toDateString()]);
-        }
+        $layanan->update([
+            'tanggal_mulai_penagihan' => $tanggal->toDateString(),
+        ]);
     }
 
     /**

@@ -111,13 +111,20 @@ Route::prefix('admin')->group(function () {
             Route::get('pendapatan/pelanggan-list', [PendapatanController::class, 'pelangganList']);
             Route::post('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
             Route::post('pendapatan/report', [PendapatanController::class, 'report']);
+
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
+
+            Route::get('tagihan/pertama/{pelanggan}/preview', [KeuanganTagihanController::class, 'previewTagihanPertama']);
+            Route::post('tagihan/pertama/{pelanggan}', [KeuanganTagihanController::class, 'generateTagihanPertama']);
+
             Route::get('tagihan/{tagihan}', [KeuanganTagihanController::class, 'show']);
             Route::post('tagihan/generate/{pelanggan}', [KeuanganTagihanController::class, 'generateUntukPelanggan']);
             Route::post('tagihan/{tagihan}/perbarui-link', [KeuanganTagihanController::class, 'perbaruiLink']);
             Route::post('tagihan/{tagihan}/regenerate', [KeuanganTagihanController::class, 'regenerate']);
             Route::post('tagihan/{tagihan}/bayar-tunai', [KeuanganTagihanController::class, 'bayarTunai']);
+
+            Route::get('pendaftar-baru', [KeuanganTagihanController::class, 'pendaftarBaru']);
         });
 
         // ----- Super Admin -----

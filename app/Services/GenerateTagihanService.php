@@ -91,6 +91,153 @@ class GenerateTagihanService
         });
     }
 
+    public function hitungTagihanPertama(
+        LayananInternet $layanan,
+        string $mode,
+    ): array {
+        if ($layanan->status !== StatusLayananEnum::AKTIF) {
+            throw new \InvalidArgumentException(
+                'Layanan belum aktif.'
+            );
+        }
+
+        if (Tagihan::where('layanan_internet_id', $layanan->id)->exists()) {
+            throw new \InvalidArgumentException(
+                'Tagihan pertama untuk layanan ini sudah pernah dibuat.'
+            );
+        }
+
+        $mode = strtolower($mode);
+
+        if (! in_array($mode, ['prorata', 'full'], true)) {
+            throw new \InvalidArgumentException(
+                'Mode tagihan pertama harus prorata atau full.'
+            );
+        }
+
+        if (! $layanan->tanggal_aktif) {
+            throw new \InvalidArgumentException(
+                'Tanggal aktif layanan belum tersedia.'
+            );
+        }
+
+        [$namaPaket, $kecepatan, $harga] = $this->snapshotPaket($layanan);
+
+        $tanggalAktif = Carbon::parse($layanan->tanggal_aktif);
+        $hargaBulanan = (float) $harga;
+
+        $jumlahHariDalamBulan = $tanggalAktif->daysInMonth;
+
+        $jumlahHari = $tanggalAktif->diffInDays(
+            $tanggalAktif->copy()->endOfMonth()
+        ) + 1;
+
+        $nominalProrata = round(
+            ($hargaBulanan / $jumlahHariDalamBulan) * $jumlahHari,
+            2
+        );
+
+        $nominalFull = round($hargaBulanan, 2);
+
+        $nominalTerhitung = $mode === 'prorata'
+            ? $nominalProrata
+            : $nominalFull;
+
+        return [
+            'mode' => $mode,
+            'tanggal_aktif' => $tanggalAktif->toDateString(),
+            'periode_bulan' => $tanggalAktif->month,
+            'periode_tahun' => $tanggalAktif->year,
+            'nama_paket' => $namaPaket,
+            'kecepatan_mbps' => $kecepatan,
+            'harga_bulanan' => $hargaBulanan,
+            'jumlah_hari' => $mode === 'prorata'
+                ? $jumlahHari
+                : $jumlahHariDalamBulan,
+            'jumlah_hari_dalam_bulan' => $jumlahHariDalamBulan,
+            'nominal_prorata' => $nominalProrata,
+            'nominal_full' => $nominalFull,
+            'nominal_terhitung' => $nominalTerhitung,
+        ];
+    }
+
+    public function generateTagihanPertama(
+        LayananInternet $layanan,
+        string $mode,
+        ?float $nominalManual = null,
+        ?Carbon $tanggalJatuhTempo = null,
+    ): ?Tagihan {
+        if ($layanan->status !== StatusLayananEnum::AKTIF) {
+            return null;
+        }
+
+        $mode = strtolower($mode);
+
+        if (! in_array($mode, ['prorata', 'full'], true)) {
+            throw new \InvalidArgumentException(
+                'Mode tagihan pertama harus prorata atau full.'
+            );
+        }
+
+        $perhitungan = $this->hitungTagihanPertama($layanan, $mode);
+
+        $namaPaket = $perhitungan['nama_paket'];
+        $kecepatan = $perhitungan['kecepatan_mbps'];
+        $hargaBulanan = $perhitungan['harga_bulanan'];
+
+        $periodeBulan = $perhitungan['periode_bulan'];
+        $periodeTahun = $perhitungan['periode_tahun'];
+
+        $nominalTerhitung = $perhitungan['nominal_terhitung'];
+
+        $totalTagihan = $nominalManual !== null
+            ? $nominalManual
+            : round($nominalTerhitung, 2);
+
+        if ($totalTagihan < 0) {
+            throw new \InvalidArgumentException(
+                'Nominal tagihan tidak boleh kurang dari 0.'
+            );
+        }
+
+        return DB::transaction(function () use (
+            $layanan,
+            $namaPaket,
+            $kecepatan,
+            $hargaBulanan,
+            $totalTagihan,
+            $periodeBulan,
+            $periodeTahun,
+            $tanggalJatuhTempo,
+        ) {
+            $nomorTagihan = $this->generatorNomor->generate(
+                Tagihan::class,
+                'nomor_tagihan',
+                'INV'
+            );
+
+            $tagihan = $this->tagihanRepository->create([
+                'nomor_tagihan' => $nomorTagihan,
+                'layanan_internet_id' => $layanan->id,
+                'periode_bulan' => $periodeBulan,
+                'periode_tahun' => $periodeTahun,
+                'nama_paket_snapshot' => $namaPaket,
+                'kecepatan_snapshot_mbps' => $kecepatan,
+                'harga_snapshot' => $hargaBulanan,
+                'total_tagihan' => $totalTagihan,
+                'jumlah_bulan' => 1,
+                'tanggal_jatuh_tempo' => $tanggalJatuhTempo
+                    ? $tanggalJatuhTempo->toDateString()
+                    : Carbon::today()->toDateString(),
+                'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            ]);
+
+            TagihanDibuat::dispatch($tagihan);
+
+            return $tagihan;
+        });
+    }
+
     private function snapshotPaket(LayananInternet $layanan): array
     {
         if ($layanan->tipe_paket === TipePaketEnum::REGULER) {

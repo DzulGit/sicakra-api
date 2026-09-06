@@ -62,6 +62,32 @@ class TagihanController extends Controller
         return response()->json(['data' => $data]);
     }
 
+    public function pendaftarBaru(Request $request)
+    {
+        $this->authorize('create', Tagihan::class);
+
+        $perPage = $request->integer('per_page', 10);
+
+        $pelanggan = Pelanggan::query()
+            ->whereHas('layananInternet', function ($query) {
+                $query
+                    ->where('status', StatusLayananEnum::AKTIF)
+                    ->whereDoesntHave('tagihan');
+            })
+            ->with([
+                'layananInternet' => function ($query) {
+                    $query
+                        ->where('status', StatusLayananEnum::AKTIF)
+                        ->whereDoesntHave('tagihan')
+                        ->with('paketInternet');
+                },
+            ])
+            ->orderBy('nama_lengkap')
+            ->paginate($perPage);
+
+        return response()->json($pelanggan);
+    }
+
     /**
      * Buat tagihan untuk periode tertentu yang dipilih admin (pilihan bulan tagihan)
      * — fitur DARURAT saja. Preview & konfirmasi ditangani frontend sebelum mengirim
@@ -128,6 +154,155 @@ class TagihanController extends Controller
         return response()->json([
             'message' => "Tagihan periode {$periodeBulan}/{$periodeTahun} berhasil dibuat.",
             'data' => $tagihanDibuat,
+        ], 201);
+    }
+
+    /**
+     * Preview tagihan pertama untuk pelanggan aktif.
+     *
+     * Tidak membuat record tagihan.
+     * Mengembalikan perhitungan prorata dan full agar Keuangan
+     * bisa memilih mode sebelum menerbitkan tagihan.
+     */
+    public function previewTagihanPertama(
+        Request $request,
+        Pelanggan $pelanggan
+    ) {
+        $this->authorize('create', Tagihan::class);
+
+        $layananAktif = $pelanggan->layananInternet()
+            ->where('status', StatusLayananEnum::AKTIF)
+            ->get();
+
+        if ($layananAktif->isEmpty()) {
+            return response()->json([
+                'message' => 'Pelanggan tidak punya layanan aktif.',
+            ], 422);
+        }
+
+        $data = [];
+
+        foreach ($layananAktif as $layanan) {
+            if (Tagihan::where('layanan_internet_id', $layanan->id)->exists()) {
+                continue;
+            }
+
+            $prorata = $this->generateTagihanService->hitungTagihanPertama(
+                $layanan,
+                'prorata'
+            );
+
+            $full = $this->generateTagihanService->hitungTagihanPertama(
+                $layanan,
+                'full'
+            );
+
+            $data[] = [
+                'layanan_internet_id' => $layanan->id,
+                'prorata' => $prorata,
+                'full' => $full,
+            ];
+        }
+
+        if (empty($data)) {
+            return response()->json([
+                'message' => 'Pelanggan ini sudah memiliki tagihan.',
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Generate tagihan pertama secara manual oleh Keuangan.
+     *
+     * Tagihan pertama hanya dibuat sekali untuk layanan.
+     * Mode:
+     * - prorata
+     * - full
+     *
+     * Nominal hasil perhitungan boleh diubah manual oleh Keuangan.
+     */
+    public function generateTagihanPertama(
+        Request $request,
+        Pelanggan $pelanggan
+    ) {
+        $this->authorize('create', Tagihan::class);
+
+        $validated = $request->validate([
+            'layanan_internet_id' => [
+                'required',
+                'integer',
+            ],
+            'mode' => [
+                'required',
+                'string',
+                'in:prorata,full',
+            ],
+            'nominal_manual' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'jumlah_hari_jatuh_tempo' => [
+                'sometimes',
+                'integer',
+                'min:1',
+                'max:31',
+            ],
+        ]);
+
+        $layanan = $pelanggan->layananInternet()
+            ->where('id', $validated['layanan_internet_id'])
+            ->where('status', StatusLayananEnum::AKTIF)
+            ->first();
+
+        if (! $layanan) {
+            return response()->json([
+                'message' => 'Layanan aktif tidak ditemukan untuk pelanggan ini.',
+            ], 422);
+        }
+
+        if (
+            Tagihan::where('layanan_internet_id', $layanan->id)
+                ->exists()
+        ) {
+            return response()->json([
+                'message' => 'Tagihan pertama untuk layanan ini sudah pernah dibuat.',
+            ], 422);
+        }
+
+        $jumlahHariJatuhTempo = (int) (
+            $validated['jumlah_hari_jatuh_tempo'] ?? 7
+        );
+
+        $tanggalJatuhTempo = Carbon::today()
+            ->addDays($jumlahHariJatuhTempo);
+
+        $tagihan = $this->generateTagihanService->generateTagihanPertama(
+            $layanan,
+            $validated['mode'],
+            isset($validated['nominal_manual'])
+                ? (float) $validated['nominal_manual']
+                : null,
+            $tanggalJatuhTempo,
+        );
+
+        if (! $tagihan) {
+            return response()->json([
+                'message' => 'Tagihan pertama gagal dibuat.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Tagihan pertama berhasil dibuat.',
+            'data' => $tagihan->load([
+                'layananInternet.paketInternet',
+                'layananInternet.pelanggan',
+                'pembayaran',
+            ]),
         ], 201);
     }
 
