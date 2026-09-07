@@ -28,6 +28,7 @@ class Pelanggan extends Authenticatable
         'foto_ktp',
         'foto_selfie_ktp',
         'foto_profil',
+        'reseller_id',
     ];
 
     protected $casts = [
@@ -55,6 +56,11 @@ class Pelanggan extends Authenticatable
     public function layananInternet(): HasMany
     {
         return $this->hasMany(LayananInternet::class, 'pelanggan_id');
+    }
+
+    public function reseller()
+    {
+        return $this->belongsTo(Admin::class, 'reseller_id');
     }
 
     public function getFotoKtpUrlAttribute(): ?string

@@ -54,4 +54,33 @@ class Admin extends Authenticatable
   {
     return $this->hasMany(LaporanKendala::class, 'ditutup_oleh');
   }
+
+  public function pelanggan(): HasMany
+  {
+    return $this->hasMany(Pelanggan::class, 'reseller_id');
+  }
+
+  /**
+   * Cek apakah admin memiliki salah satu dari peran yang diizinkan.
+   * Reseller dianggap setara dengan gabungan modul operasional, teknisi,
+   * dan keuangan (akses gabungan lintas modul).
+   */
+  public function memilikiPeran(PeranAdminEnum ...$peranDiizinkan): bool
+  {
+    $peranEfektif = $this->peran === PeranAdminEnum::RESELLER
+        ? [
+            PeranAdminEnum::OPERASIONAL,
+            PeranAdminEnum::TEKNISI,
+            PeranAdminEnum::KEUANGAN,
+        ]
+        : [$this->peran];
+
+    foreach ($peranEfektif as $peran) {
+      if (in_array($peran, $peranDiizinkan, true)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }

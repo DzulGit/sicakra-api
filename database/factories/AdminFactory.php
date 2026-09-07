@@ -44,4 +44,9 @@ class AdminFactory extends Factory
     {
         return $this->state(['peran' => PeranAdminEnum::SUPER_ADMIN]);
     }
+
+    public function reseller(): static
+    {
+        return $this->state(['peran' => PeranAdminEnum::RESELLER]);
+    }
 }

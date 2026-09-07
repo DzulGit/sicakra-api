@@ -18,7 +18,7 @@ class SimpanAdminRequest extends FormRequest
             'email' => ['required', 'email', 'unique:admin,email'],
             'password' => ['required', 'string', 'min:8'],
             // super_admin SENGAJA tidak diizinkan dibuat lewat sini — hanya lewat SuperAdminSeeder
-            'peran' => ['required', 'in:operasional,teknisi,keuangan'],
+            'peran' => ['required', 'in:operasional,teknisi,keuangan,reseller'],
         ];
     }
 }

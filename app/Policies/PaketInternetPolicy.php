@@ -10,26 +10,26 @@ class PaketInternetPolicy
 {
     public function viewAny(Admin $user): bool
     {
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function view(Admin $user, PaketInternet $paketInternet): bool
     {
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function create(Admin $user): bool
     {
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function update(Admin $user, PaketInternet $paketInternet): bool
     {
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function delete(Admin $user, PaketInternet $paketInternet): bool
     {
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 }

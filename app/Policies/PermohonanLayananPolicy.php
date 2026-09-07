@@ -32,7 +32,7 @@ class PermohonanLayananPolicy
             return true;
         }
 
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     /**
@@ -40,7 +40,7 @@ class PermohonanLayananPolicy
      */
     public function ubahStatus(Admin $admin, PermohonanLayanan $permohonan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function delete(Admin $admin, PermohonanLayanan $permohonan): bool

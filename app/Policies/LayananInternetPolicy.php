@@ -29,7 +29,7 @@ class LayananInternetPolicy
      */
     public function update(Admin $admin, LayananInternet $layanan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function delete(Admin $admin, LayananInternet $layanan): bool

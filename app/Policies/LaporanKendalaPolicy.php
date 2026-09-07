@@ -12,11 +12,11 @@ class LaporanKendalaPolicy
     public function viewAny(Admin|Pelanggan $user): bool
     {
         if ($user instanceof Admin) {
-            return in_array($user->peran, [
+            return $user->memilikiPeran(
                 PeranAdminEnum::OPERASIONAL,
                 PeranAdminEnum::TEKNISI,
                 PeranAdminEnum::SUPER_ADMIN,
-            ], true);
+            );
         }
 
         return true;
@@ -37,7 +37,7 @@ class LaporanKendalaPolicy
             return true;
         }
 
-        return in_array($user->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $user->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     /**
@@ -45,7 +45,7 @@ class LaporanKendalaPolicy
      */
     public function teruskanKeTeknisi(Admin $admin, LaporanKendala $laporan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 
     /**
@@ -53,7 +53,7 @@ class LaporanKendalaPolicy
      */
     public function selesaikan(Admin $admin, LaporanKendala $laporan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::TEKNISI, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::TEKNISI, PeranAdminEnum::SUPER_ADMIN);
     }
 
     /**
@@ -61,6 +61,6 @@ class LaporanKendalaPolicy
      */
     public function tutup(Admin $admin, LaporanKendala $laporan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN);
     }
 }

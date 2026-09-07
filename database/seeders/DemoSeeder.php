@@ -146,6 +146,8 @@ class DemoSeeder extends Seeder
 
     private Admin $keuangan;
 
+    private Admin $reseller;
+
     private array $teknisi = [];
 
     private array $tim = [];
@@ -213,6 +215,13 @@ class DemoSeeder extends Seeder
             'status_aktif' => true,
         ]);
         $this->keuangan = $keuanganAdm;
+
+        $this->reseller = Admin::updateOrCreate(['email' => 'reseller@sicakra.com'], [
+            'nama_lengkap' => 'Rina Reseller',
+            'password' => 'password123',
+            'peran' => PeranAdminEnum::RESELLER,
+            'status_aktif' => true,
+        ]);
 
         $namaTeknisi = ['Taufik Teknisi', 'Rizky Teknisi', 'Ahmad Teknisi', 'Gilang Teknisi'];
         foreach ($namaTeknisi as $i => $nama) {

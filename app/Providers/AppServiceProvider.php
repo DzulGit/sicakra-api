@@ -24,9 +24,12 @@ use App\Repositories\Eloquent\PelangganRepository;
 use App\Repositories\Eloquent\PermohonanLayananRepository;
 use App\Repositories\Eloquent\TagihanRepository;
 use App\Repositories\Eloquent\TimTeknisiRepository;
+use App\Models\Admin;
+use App\Policies\ResellerPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -81,6 +84,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(Admin::class, ResellerPolicy::class);
+
         RateLimiter::for('login', function (Request $request) {
             return Limit::perMinute(5)->by($request->ip());
         });

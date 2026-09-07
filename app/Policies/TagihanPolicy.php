@@ -13,7 +13,7 @@ class TagihanPolicy
     public function viewAny(Admin|Pelanggan $user): bool
     {
         if ($user instanceof Admin) {
-            return in_array($user->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true);
+            return $user->memilikiPeran(PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN);
         }
 
         return true; // pelanggan boleh lihat daftar tagihan miliknya sendiri
@@ -22,7 +22,7 @@ class TagihanPolicy
     public function view(Admin|Pelanggan $user, Tagihan $tagihan): bool
     {
         if ($user instanceof Admin) {
-            return in_array($user->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true);
+            return $user->memilikiPeran(PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN);
         }
 
         return (int) $tagihan->layananInternet->pelanggan_id === (int) $user->id;
@@ -32,7 +32,7 @@ class TagihanPolicy
     {
         // Khusus Admin Keuangan / Super Admin: generate tagihan manual per
         // pelanggan (kasus testing / tagihan yang gagal dibuat otomatis).
-        return in_array($admin->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true);
+        return $admin->memilikiPeran(PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN);
     }
 
     public function update(Admin $admin, Tagihan $tagihan): bool
@@ -48,7 +48,7 @@ class TagihanPolicy
      */
     public function regenerate(Admin $admin, Tagihan $tagihan): bool
     {
-        return in_array($admin->peran, [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN], true)
+        return $admin->memilikiPeran(PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN)
             && $tagihan->status_pembayaran !== StatusPembayaranEnum::SUDAH_BAYAR;
     }
 }

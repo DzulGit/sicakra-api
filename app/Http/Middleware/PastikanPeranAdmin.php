@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\PeranAdminEnum;
 use App\Models\Admin;
 use Closure;
 use Illuminate\Http\Request;
@@ -13,8 +14,10 @@ class PastikanPeranAdmin
      * Proteksi rute berdasarkan `peran` admin. Dipasang SETELAH middleware
      * 'auth:sanctum' dan 'tipe-pengguna:admin'.
      *
+     * Reseller mendapat akses gabungan ke modul operasional, teknisi, dan keuangan.
+     *
      * Contoh: ->middleware('peran:keuangan')
-     *         ->middleware('peran:operasional,super_admin')   // boleh lebih dari satu
+     *         ->middleware('peran:operasional,super_admin')
      */
     public function handle(Request $request, Closure $next, string ...$peranDiizinkan): Response
     {
@@ -24,7 +27,9 @@ class PastikanPeranAdmin
             abort(403, 'Akses tidak diizinkan.');
         }
 
-        if (! in_array($admin->peran->value, $peranDiizinkan, true)) {
+        $peran = array_map(fn (string $p) => PeranAdminEnum::from($p), $peranDiizinkan);
+
+        if (! $admin->memilikiPeran(...$peran)) {
             abort(403, 'Anda tidak memiliki izin untuk mengakses fitur ini.');
         }
 

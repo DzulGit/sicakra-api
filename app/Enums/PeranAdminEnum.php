@@ -8,6 +8,7 @@ enum PeranAdminEnum: string
     case OPERASIONAL = 'operasional';
     case TEKNISI = 'teknisi';
     case KEUANGAN = 'keuangan';
+    case RESELLER = 'reseller';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum PeranAdminEnum: string
             self::OPERASIONAL => 'Operasional',
             self::TEKNISI => 'Teknisi',
             self::KEUANGAN => 'Keuangan',
+            self::RESELLER => 'Reseller',
         };
     }
 }
