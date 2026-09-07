@@ -16,6 +16,11 @@ class PelangganFilter extends QueryFilter
         });
     }
 
+    protected function reseller(Builder $builder, string $nilai): void
+    {
+        $builder->where('reseller_id', (int) $nilai);
+    }
+
     protected function jenis(Builder $builder, string $nilai): void
     {
         if ($nilai === 'aktif') {

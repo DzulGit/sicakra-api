@@ -3,16 +3,20 @@
 namespace App\Http\Controllers\Api\Operasional;
 
 use App\Enums\JenisPermohonanEnum;
+use App\Enums\PeranAdminEnum;
 use App\Filters\PelangganFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Operasional\BuatPelangganRequest;
+use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
+use App\Notifications\PelangganBaruDariResellerNotification;
 use App\Repositories\Contracts\PelangganRepositoryInterface;
 use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class PelangganController extends Controller
@@ -40,8 +44,10 @@ class PelangganController extends Controller
     public function buatBaru(BuatPelangganRequest $request)
     {
         $data = $request->validated();
+        $aktor = $request->user();
+        $adalahReseller = $aktor->peran === PeranAdminEnum::RESELLER;
 
-        $permohonan = DB::transaction(function () use ($data, $request) {
+        $permohonan = DB::transaction(function () use ($data, $request, $aktor, $adalahReseller) {
             $pathKtp = $request->hasFile('foto_ktp')
                 ? Storage::disk('public')->putFile('ktp', $request->file('foto_ktp'))
                 : null;
@@ -57,7 +63,17 @@ class PelangganController extends Controller
                 'foto_ktp' => $pathKtp,
                 'foto_selfie_ktp' => $pathSelfie,
                 'password_sudah_dibuat' => false,
+                'reseller_id' => $adalahReseller ? $aktor->id : null,
             ]);
+
+            if ($adalahReseller) {
+                Notification::send(
+                    Admin::where('status_aktif', true)
+                        ->whereIn('peran', [PeranAdminEnum::OPERASIONAL, PeranAdminEnum::SUPER_ADMIN])
+                        ->get(),
+                    new PelangganBaruDariResellerNotification($pelanggan, $aktor),
+                );
+            }
 
             return $this->permohonanLayananService->buatPermohonan([
                 'pelanggan_id' => $pelanggan->id,

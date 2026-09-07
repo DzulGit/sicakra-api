@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Operasional\LaporanKendalaController as Operasional
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
 use App\Http\Controllers\Api\Operasional\PelangganController;
 use App\Http\Controllers\Api\Operasional\PermohonanLayananController;
+use App\Http\Controllers\Api\Operasional\ResellerController;
 use App\Http\Controllers\Api\Pelanggan\DashboardPelangganController;
 use App\Http\Controllers\Api\Pelanggan\LaporanKendalaSayaController;
 use App\Http\Controllers\Api\Pelanggan\LayananSayaController;
@@ -69,12 +70,16 @@ Route::prefix('admin')->group(function () {
             Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
             Route::post('tim-teknisi', [TimTeknisiController::class, 'store']);
             Route::patch('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'update']);
-
-            Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index']);
+Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index']);
             Route::get('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'show']);
             Route::post('paket-internet', [OperasionalPaketInternetController::class, 'store']);
             Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
             Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
+
+            Route::get('reseller', [ResellerController::class, 'index']);
+            Route::get('reseller/{reseller}', [ResellerController::class, 'show']);
+            Route::post('reseller', [ResellerController::class, 'store']);
+            Route::get('reseller/{reseller}/pelanggan', [ResellerController::class, 'pelanggan']);
 
             Route::patch('/laporan-kendala/{laporanKendala}/tindak-lanjut', [LaporanKendalaController::class, 'tindakLanjut']);
         });
