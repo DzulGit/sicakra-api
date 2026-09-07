@@ -3,14 +3,21 @@ services:
     image: postgres:15
     container_name: sicakra_postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password 
-      POSTGRES_DB: sicakra_database
     ports:
       - "5433:5432"
+    environment:
+      POSTGRES_DB: sicakra_local
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - db-tools
 
 volumes:
-  postgres_data:
+  postgres_data: {}
+
+networks:
+  db-tools:
+    name: db-tools_db-network
+    external: true
