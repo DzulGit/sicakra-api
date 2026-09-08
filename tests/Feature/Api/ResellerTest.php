@@ -65,7 +65,7 @@ class ResellerTest extends TestCase
         $token = $reseller->createToken('test')->plainTextToken;
 
         $this->withHeader('Authorization', "Bearer {$token}")
-            ->postJson('/api/admin/operasional/pelanggan/buat-baru', [
+            ->postJson('/api/reseller/pelanggan', [
                 'nama_lengkap' => 'Andi Test',
                 'nik' => '1234567890123456',
                 'nomor_hp' => '081234567890',
