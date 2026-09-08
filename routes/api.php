@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
+use App\Http\Controllers\Api\Reseller\ResellerPortalController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
 use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
@@ -70,7 +71,7 @@ Route::prefix('admin')->group(function () {
             Route::get('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'show']);
             Route::post('tim-teknisi', [TimTeknisiController::class, 'store']);
             Route::patch('tim-teknisi/{timTeknisi}', [TimTeknisiController::class, 'update']);
-Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index']);
+            Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index']);
             Route::get('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'show']);
             Route::post('paket-internet', [OperasionalPaketInternetController::class, 'store']);
             Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
@@ -141,6 +142,21 @@ Route::get('paket-internet', [OperasionalPaketInternetController::class, 'index'
             Route::patch('admin/{admin}/nonaktifkan', [AdminController::class, 'nonaktifkan']);
 
         });
+    });
+});
+
+// ===== RESELLER (portal mitra eksternal — data terbatas milik reseller) =====
+Route::prefix('reseller')->group(function () {
+    Route::post('login', [AuthAdminController::class, 'loginReseller'])
+        ->middleware('throttle:login');
+
+    Route::middleware(['auth:sanctum', 'tipe-pengguna:admin', 'peran:reseller'])->group(function () {
+        Route::post('logout', [AuthAdminController::class, 'logout']);
+
+        Route::get('dashboard', [ResellerPortalController::class, 'dashboard']);
+        Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
+        Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
+        Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
     });
 });
 
