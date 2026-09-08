@@ -20,6 +20,7 @@ class PaketInternet extends Model
         'deskripsi',
         'status_aktif',
         'promo_gratis_bulan',
+        'reseller_id',
     ];
 
     protected $casts = [
@@ -36,5 +37,10 @@ class PaketInternet extends Model
     public function layananInternet(): HasMany
     {
         return $this->hasMany(LayananInternet::class, 'paket_internet_id');
+    }
+
+    public function reseller(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'reseller_id');
     }
 }

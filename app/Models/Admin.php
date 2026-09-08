@@ -70,4 +70,9 @@ class Admin extends Authenticatable
     {
         return in_array($this->peran, $peranDiizinkan, true);
     }
+
+    public function paketInternet(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PaketInternet::class, 'reseller_id');
+    }
 }

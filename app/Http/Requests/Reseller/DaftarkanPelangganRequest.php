@@ -8,7 +8,7 @@ class DaftarkanPelangganRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // proteksi via middleware peran:reseller
+        return true; 
     }
 
     public function rules(): array
@@ -17,7 +17,7 @@ class DaftarkanPelangganRequest extends FormRequest
             'nama_lengkap' => ['required', 'string', 'max:255'],
             'nik' => ['required', 'string', 'size:16', 'unique:pelanggan,nik'],
             'nomor_hp' => ['required', 'string', 'max:20', 'unique:pelanggan,nomor_hp'],
-            'email' => ['required', 'email', 'unique:pelanggan,email'],
+            'email' => ['nullable', 'email', 'unique:pelanggan,email'],
 
             'alamat_pemasangan' => ['required', 'string'],
             'detail_alamat' => ['nullable', 'string'],
@@ -26,11 +26,7 @@ class DaftarkanPelangganRequest extends FormRequest
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
 
-            'tipe_paket' => ['required', 'in:reguler,custom'],
-            'paket_internet_id' => ['required_if:tipe_paket,reguler', 'nullable', 'exists:paket_internet,id'],
-            'nama_paket_custom' => ['required_if:tipe_paket,custom', 'nullable', 'string'],
-            'kecepatan_custom_mbps' => ['required_if:tipe_paket,custom', 'nullable', 'integer', 'min:1'],
-            'catatan_custom' => ['nullable', 'string'],
+            'paket_internet_id' => ['required', 'exists:paket_internet,id'],
 
             'foto_ktp' => ['nullable', 'image', 'max:2048'],
             'foto_selfie_ktp' => ['nullable', 'image', 'max:2048'],
@@ -40,10 +36,9 @@ class DaftarkanPelangganRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'email.required' => 'Email wajib diisi.',
-            'email.unique' => 'Email sudah terdaftar. Gunakan email lain.',
             'nik.unique' => 'NIK sudah terdaftar.',
             'nomor_hp.unique' => 'Nomor HP sudah terdaftar.',
+            'email.unique' => 'Email sudah terdaftar.',
         ];
     }
 }
