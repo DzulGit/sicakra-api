@@ -13,7 +13,8 @@ class PaketInternetController extends Controller
      */
     public function index()
     {
-        $paket = PaketInternet::where('status_aktif', true)
+        $paket = PaketInternet::whereNull('reseller_id')
+            ->where('status_aktif', true)
             ->orderBy('kecepatan_mbps')
             ->get();
 

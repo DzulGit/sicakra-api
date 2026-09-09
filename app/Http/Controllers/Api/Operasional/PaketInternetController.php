@@ -11,7 +11,9 @@ class PaketInternetController extends Controller
 {
     public function index()
     {
-        $paket = PaketInternet::orderBy('kecepatan_mbps')->get();
+        $paket = PaketInternet::whereNull('reseller_id')
+            ->orderBy('kecepatan_mbps')
+            ->get();
 
         return response()->json(['data' => $paket]);
     }
