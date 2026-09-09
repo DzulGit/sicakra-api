@@ -6,6 +6,8 @@ use App\Enums\PeranAdminEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Operasional\SimpanResellerRequest;
 use App\Models\Admin;
+use App\Models\PaketInternet;
+use App\Models\Tagihan;
 use App\Repositories\Contracts\AdminRepositoryInterface;
 
 class ResellerController extends Controller
@@ -55,10 +57,64 @@ class ResellerController extends Controller
         $this->authorize('lihatPelanggan', $reseller);
 
         $pelanggan = $reseller->pelanggan()
-            ->with(['layananInternet.paketInternet'])
+            ->with([
+                'layananInternet.paketInternet',
+                'layananInternet.tagihan.pembayaran',
+            ])
             ->latest()
             ->paginate(20);
 
         return response()->json(['data' => $pelanggan]);
+    }
+
+    public function pelangganDetail(Admin $reseller, \App\Models\Pelanggan $pelanggan)
+    {
+        $this->authorize('lihatPelanggan', $reseller);
+
+        // Pastikan pelanggan memang milik reseller tersebut.
+        if ($pelanggan->reseller_id !== $reseller->id) {
+            abort(404);
+        }
+
+        $pelanggan->load([
+            'layananInternet.paketInternet',
+            'layananInternet.tagihan.pembayaran',
+        ]);
+
+        return response()->json([
+            'data' => $pelanggan,
+        ]);
+    }
+
+    /** Pantau paket internet yang dibuat reseller — read-only. */
+    public function paket(Admin $reseller)
+    {
+        $this->authorize('lihatPelanggan', $reseller);
+
+        $paket = PaketInternet::where('reseller_id', $reseller->id)
+            ->latest()
+            ->paginate(20);
+
+        return response()->json(['data' => $paket]);
+    }
+
+    /** Pantau seluruh tagihan reseller kepada pelanggannya — read-only. */
+    public function tagihan(Admin $reseller)
+    {
+        $this->authorize('lihatPelanggan', $reseller);
+
+        $tagihan = Tagihan::whereHas(
+            'layananInternet.pelanggan',
+            fn ($query) => $query->where('reseller_id', $reseller->id),
+        )
+            ->with([
+                'layananInternet.pelanggan',
+                'layananInternet.paketInternet',
+                'pembayaran',
+            ])
+            ->latest()
+            ->paginate(20);
+
+        return response()->json(['data' => $tagihan]);
     }
 }

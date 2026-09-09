@@ -81,6 +81,9 @@ Route::prefix('admin')->group(function () {
             Route::get('reseller/{reseller}', [ResellerController::class, 'show']);
             Route::post('reseller', [ResellerController::class, 'store']);
             Route::get('reseller/{reseller}/pelanggan', [ResellerController::class, 'pelanggan']);
+            Route::get('reseller/{reseller}/pelanggan/{pelanggan}', [ResellerController::class, 'pelangganDetail']);
+            Route::get('reseller/{reseller}/paket', [ResellerController::class, 'paket']);
+            Route::get('reseller/{reseller}/tagihan', [ResellerController::class, 'tagihan']);
 
             Route::patch('/laporan-kendala/{laporanKendala}/tindak-lanjut', [LaporanKendalaController::class, 'tindakLanjut']);
         });
@@ -157,17 +160,6 @@ Route::prefix('reseller')->group(function () {
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
-        
-        Route::apiResource('paket-internet', \App\Http\Controllers\Api\Reseller\PaketInternetController::class);
-
-        Route::get('tagihan/pendaftar-baru', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'pendaftarBaru']);
-        Route::get('tagihan/pertama/{pelanggan}/preview', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'previewTagihanPertama']);
-        Route::post('tagihan/pertama/{pelanggan}', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'generateTagihanPertama']);
-        
-        Route::get('tagihan', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'index']);
-        Route::get('tagihan/{tagihan}', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'show']);
-        Route::post('tagihan/{tagihan}/bayar-tunai', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'bayarTunai']);
-        Route::post('tagihan/{tagihan}/perbarui-link', [\App\Http\Controllers\Api\Reseller\TagihanController::class, 'perbaruiLink']);
     });
 });
 
