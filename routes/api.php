@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
+use App\Http\Controllers\Api\Reseller\PaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
@@ -78,6 +79,10 @@ Route::prefix('admin')->group(function () {
             Route::patch('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'update']);
             Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
 
+            Route::get('reseller/statistik', [ResellerController::class, 'statistik']);
+            Route::get('reseller/{reseller}/statistik', [ResellerController::class, 'statistikReseller']);
+            Route::post('reseller/laporan', [ResellerController::class, 'laporan']);
+            Route::post('reseller/laporan/excel', [ResellerController::class, 'laporanExcel']);
             Route::get('reseller', [ResellerController::class, 'index']);
             Route::get('reseller/{reseller}', [ResellerController::class, 'show']);
             Route::post('reseller', [ResellerController::class, 'store']);
@@ -161,6 +166,9 @@ Route::prefix('reseller')->group(function () {
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
+
+        Route::apiResource('paket-internet', PaketInternetController::class)
+            ->parameters(['paket-internet' => 'paketInternet']);
 
         Route::get('permohonan-layanan', [ResellerPermohonanLayananController::class, 'index']);
         Route::get('permohonan-layanan/{permohonan}', [ResellerPermohonanLayananController::class, 'show']);
