@@ -97,6 +97,41 @@ class PermohonanLayananService
         });
     }
 
+    public function selesaikanReseller(
+        PermohonanLayanan $permohonan,
+        ?Admin $diubahOleh = null,
+        ?string $catatan = null,
+    ): PermohonanLayanan {
+        $statusSekarang = $permohonan->status;
+
+        if ($statusSekarang !== StatusPermohonanEnum::MENUNGGU_VERIFIKASI) {
+            throw new TransisiStatusTidakValidException(
+                'Permohonan reseller hanya dapat diselesaikan dari status MENUNGGU_VERIFIKASI.'
+            );
+        }
+
+        return DB::transaction(function () use (
+            $permohonan,
+            $statusSekarang,
+            $diubahOleh,
+            $catatan
+        ) {
+            $permohonan = $this->permohonanLayananRepository->update($permohonan, [
+                'status' => StatusPermohonanEnum::DIKONVERSI,
+            ]);
+
+            $this->catatRiwayat(
+                $permohonan,
+                $statusSekarang,
+                StatusPermohonanEnum::DIKONVERSI,
+                $diubahOleh?->id,
+                $catatan ?? 'Permohonan reseller diterima dan perubahan langsung diterapkan.',
+            );
+
+            return $permohonan;
+        });
+    }
+
     private function catatRiwayat(
         PermohonanLayanan $permohonan,
         ?StatusPermohonanEnum $sebelum,

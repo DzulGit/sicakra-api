@@ -7,6 +7,7 @@ use App\Enums\JenisPerubahanPaketEnum;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPermohonanEnum;
 use App\Enums\TipePaketEnum;
+use App\Exceptions\TransisiStatusTidakValidException;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
@@ -40,6 +41,75 @@ class KonversiPermohonanService
                 StatusPermohonanEnum::DIKONVERSI,
                 $diprosesOleh,
                 'Permohonan selesai, dikonversi.'
+            );
+
+            return $layanan;
+        });
+    }
+
+    public function konversiReseller(
+        PermohonanLayanan $permohonan,
+        ?Admin $diprosesOleh = null,
+        ?float $hargaCustom = null,
+    ): LayananInternet {
+        return DB::transaction(function () use (
+            $permohonan,
+            $diprosesOleh,
+            $hargaCustom
+        ) {
+            /*
+            * Permohonan reseller hanya boleh diterima
+            * dari status MENUNGGU_VERIFIKASI.
+            */
+            if ($permohonan->status !== StatusPermohonanEnum::MENUNGGU_VERIFIKASI) {
+                throw new TransisiStatusTidakValidException(
+                    'Permohonan reseller hanya dapat diterima dari status MENUNGGU_VERIFIKASI.'
+                );
+            }
+
+            /*
+            * Jika paket custom dan reseller memberikan harga baru
+            * saat menerima permohonan, simpan harga tersebut
+            * sebelum perubahan layanan diterapkan.
+            */
+            if (
+                $hargaCustom !== null
+                && $permohonan->tipe_paket === TipePaketEnum::CUSTOM
+            ) {
+                $permohonan->update([
+                    'harga_custom' => $hargaCustom,
+                ]);
+
+                $permohonan->refresh();
+            }
+
+            /*
+            * Reseller tidak menggunakan proses teknisi/jadwal.
+            * Begitu diterima, perubahan langsung diterapkan.
+            */
+            $layanan = match ($permohonan->jenis_permohonan) {
+                JenisPermohonanEnum::TAMBAH_PAKET =>
+                    $this->konversiTambahPaket($permohonan),
+
+                JenisPermohonanEnum::GANTI_PAKET =>
+                    $this->konversiGantiPaket($permohonan, $diprosesOleh),
+
+                JenisPermohonanEnum::RELOKASI =>
+                    $this->konversiRelokasi($permohonan),
+
+                default => throw new \InvalidArgumentException(
+                    'Jenis permohonan ini tidak dapat diproses melalui alur reseller.'
+                ),
+            };
+
+            /*
+            * Setelah perubahan layanan berhasil diterapkan,
+            * permohonan dianggap selesai.
+            */
+            $this->permohonanLayananService->selesaikanReseller(
+                $permohonan,
+                $diprosesOleh,
+                'Permohonan reseller diterima dan perubahan langsung diterapkan.',
             );
 
             return $layanan;
