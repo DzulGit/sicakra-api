@@ -205,8 +205,6 @@ Route::prefix('reseller')->group(function () {
         Route::get('permohonan-layanan/{permohonan}', [ResellerPermohonanLayananController::class, 'show']);
         Route::post('permohonan-layanan', [ResellerPermohonanLayananController::class, 'store']);
         Route::patch('permohonan-layanan/{permohonan}/verifikasi', [ResellerPermohonanLayananController::class, 'verifikasi']);
-        Route::post('permohonan-layanan/{permohonan}/verifikasi-dan-jadwalkan', [ResellerPermohonanLayananController::class, 'verifikasiDanJadwalkan']);
-        Route::post('permohonan-layanan/{permohonan}/jadwalkan-kerja', [ResellerPermohonanLayananController::class, 'jadwalkanKerja']);
     });
 });
 

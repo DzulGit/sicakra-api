@@ -9,30 +9,27 @@ use App\Filters\PermohonanLayananFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PermohonanLayanan\VerifikasiPermohonanRequest;
 use App\Http\Requests\Reseller\BuatPermohonanResellerRequest;
-use App\Http\Requests\Reseller\JadwalkanResellerRequest;
-use App\Http\Requests\Reseller\VerifikasiDanJadwalkanResellerRequest;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Models\PermohonanLayanan;
 use App\Notifications\PermohonanStatusNotification;
-use App\Repositories\Contracts\JadwalKerjaRepositoryInterface;
-use App\Services\JadwalKerjaService;
+use App\Services\KonversiPermohonanService;
 use App\Services\PermohonanLayananService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class ResellerPermohonanLayananController extends Controller
 {
     public function __construct(
         private readonly PermohonanLayananService $permohonanLayananService,
-        private readonly JadwalKerjaService $jadwalKerjaService,
-        private readonly JadwalKerjaRepositoryInterface $jadwalKerjaRepository,
+        private readonly KonversiPermohonanService $konversiPermohonanService,
     ) {}
 
-    private function pastikanMilikReseller(PermohonanLayanan $permohonan, Admin $reseller): void
-    {
+    private function pastikanMilikReseller(
+        PermohonanLayanan $permohonan,
+        Admin $reseller
+    ): void {
         if ($permohonan->pelanggan?->reseller_id !== $reseller->id) {
             abort(404);
         }
@@ -44,7 +41,10 @@ class ResellerPermohonanLayananController extends Controller
         $reseller = $request->user();
 
         $query = PermohonanLayanan::query()
-            ->whereHas('pelanggan', fn (Builder $q) => $q->where('reseller_id', $reseller->id))
+            ->whereHas(
+                'pelanggan',
+                fn (Builder $q) => $q->where('reseller_id', $reseller->id)
+            )
             ->with('pelanggan')
             ->latest();
 
@@ -66,17 +66,24 @@ class ResellerPermohonanLayananController extends Controller
             'jadwalKerja',
         ]);
 
-        return response()->json(['data' => $permohonan]);
+        return response()->json([
+            'data' => $permohonan,
+        ]);
     }
 
     /**
-     * Reseller membuat permohonan atas nama pelanggan yang SUDAH ADA
-     * (relokasi / ganti paket / tambah paket). Pemasangan baru bypass.
+     * Reseller membuat permohonan atas nama pelanggan yang SUDAH ADA.
+     *
+     * Jenis:
+     * - relokasi
+     * - ganti paket
+     * - tambah paket
      */
     public function store(BuatPermohonanResellerRequest $request)
     {
         /** @var Admin $reseller */
         $reseller = $request->user();
+
         $data = $request->validated();
 
         $pelanggan = Pelanggan::whereKey($data['pelanggan_id'])
@@ -104,17 +111,84 @@ class ResellerPermohonanLayananController extends Controller
 
         $permohonan = $this->permohonanLayananService->buatPermohonan($data);
 
-        return response()->json(['data' => $permohonan], 201);
+        return response()->json([
+            'data' => $permohonan,
+        ], 201);
     }
 
-    /** Terima / Tolak / Minta Revisi. */
-    public function verifikasi(VerifikasiPermohonanRequest $request, PermohonanLayanan $permohonan)
-    {
-        $this->pastikanMilikReseller($permohonan, $request->user());
+    /**
+     * Terima / Tolak / Minta Revisi.
+     *
+     * Untuk reseller:
+     *
+     * TERIMA
+     * -> perubahan layanan langsung diterapkan
+     * -> status menjadi DIKONVERSI
+     *
+     * TOLAK
+     * -> tidak mengubah layanan
+     * -> status menjadi DITOLAK
+     *
+     * PERLU_REVISI
+     * -> tidak mengubah layanan
+     * -> status menjadi PERLU_REVISI
+     */
+    public function verifikasi(
+        VerifikasiPermohonanRequest $request,
+        PermohonanLayanan $permohonan
+    ) {
+        $this->pastikanMilikReseller(
+            $permohonan,
+            $request->user()
+        );
 
         $data = $request->validated();
-        $statusBaru = StatusPermohonanEnum::from($data['status']);
 
+        $statusBaru = StatusPermohonanEnum::from(
+            $data['status']
+        );
+
+        /*
+         * TERIMA
+         *
+         * Perubahan LayananInternet langsung diterapkan
+         * oleh KonversiPermohonanService.
+         */
+        if ($statusBaru === StatusPermohonanEnum::DITERIMA) {
+            $this->konversiPermohonanService->konversiReseller(
+                $permohonan,
+                $request->user(),
+                $data['harga_custom'] ?? null,
+            );
+
+            $permohonan = $permohonan->fresh([
+                'pelanggan',
+                'paketInternet',
+                'paketInternetBaru',
+                'layananDirelokasi',
+                'riwayatStatus.diubahOleh',
+                'jadwalKerja',
+            ]);
+
+            $permohonan->pelanggan?->notify(
+                new PermohonanStatusNotification(
+                    $permohonan,
+                    StatusPermohonanEnum::DIKONVERSI,
+                    $data['catatan']
+                        ?? 'Permohonan diterima dan perubahan langsung diterapkan.',
+                )
+            );
+
+            return response()->json([
+                'data' => $permohonan,
+            ]);
+        }
+
+        /*
+         * TOLAK / PERLU REVISI
+         *
+         * Tidak ada perubahan pada LayananInternet.
+         */
         $permohonan = $this->permohonanLayananService->ubahStatus(
             $permohonan,
             $statusBaru,
@@ -122,129 +196,29 @@ class ResellerPermohonanLayananController extends Controller
             $data['catatan'] ?? null,
         );
 
-        if ($statusBaru === StatusPermohonanEnum::DITERIMA
-            && $permohonan->tipe_paket->value === TipePaketEnum::CUSTOM->value
-            && isset($data['harga_custom'])) {
-            $permohonan->update(['harga_custom' => $data['harga_custom']]);
-        }
-
         if ($statusBaru === StatusPermohonanEnum::DITOLAK) {
-            $permohonan->update(['alasan_ditolak' => $data['catatan'] ?? null]);
+            $permohonan->update([
+                'alasan_ditolak' => $data['catatan'] ?? null,
+            ]);
         }
 
-        $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
-            $permohonan,
-            $statusBaru,
-            $data['catatan'] ?? null,
-        ));
-
-        return response()->json(['data' => $permohonan->fresh([
-            'pelanggan',
-            'paketInternet',
-            'paketInternetBaru',
-            'layananDirelokasi',
-            'riwayatStatus.diubahOleh',
-            'jadwalKerja',
-        ])]);
-    }
-
-    /** Verifikasi + jadwalkan dalam satu langkah — tanpa teknisi. */
-    public function verifikasiDanJadwalkan(VerifikasiDanJadwalkanResellerRequest $request, PermohonanLayanan $permohonan)
-    {
-        $this->pastikanMilikReseller($permohonan, $request->user());
-
-        $data = $request->validated();
-        $statusBaru = StatusPermohonanEnum::from($data['status']);
-
-        return DB::transaction(function () use ($permohonan, $statusBaru, $data, $request) {
-            $permohonan = $this->permohonanLayananService->ubahStatus(
-                $permohonan,
-                $statusBaru,
-                $request->user(),
-                $data['catatan'] ?? null,
-            );
-
-            if ($statusBaru === StatusPermohonanEnum::DITOLAK) {
-                $permohonan->update(['alasan_ditolak' => $data['catatan'] ?? null]);
-            }
-
-            if ($statusBaru === StatusPermohonanEnum::DITERIMA) {
-                if ($permohonan->tipe_paket->value === TipePaketEnum::CUSTOM->value && isset($data['harga_custom'])) {
-                    $permohonan->update(['harga_custom' => $data['harga_custom']]);
-                }
-
-                $jadwal = $this->jadwalKerjaRepository->create([
-                    'permohonan_layanan_id' => $permohonan->id,
-                    'tim_teknisi_id' => null,
-                    'tanggal_kerja' => $data['tanggal_kerja'],
-                ]);
-                $jadwal->teknisi()->sync([]);
-
-                $this->permohonanLayananService->ubahStatus(
-                    $permohonan,
-                    StatusPermohonanEnum::DIJADWALKAN,
-                    $request->user(),
-                    'Jadwal kerja dibuat langsung setelah verifikasi.',
-                );
-
-                $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
-                    $permohonan,
-                    StatusPermohonanEnum::DIJADWALKAN,
-                    $data['catatan'] ?? null,
-                ));
-
-                return response()->json([
-                    'data' => [
-                        'permohonan' => $permohonan->fresh()->load([
-                            'pelanggan',
-                            'paketInternet',
-                            'paketInternetBaru',
-                            'layananDirelokasi',
-                            'riwayatStatus.diubahOleh',
-                            'jadwalKerja',
-                        ]),
-                        'jadwal_kerja' => $jadwal->load(['teknisi', 'timTeknisi']),
-                    ],
-                ], 201);
-            }
-
-            $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
+        $permohonan->pelanggan?->notify(
+            new PermohonanStatusNotification(
                 $permohonan,
                 $statusBaru,
                 $data['catatan'] ?? null,
-            ));
-
-            return response()->json([
-                'data' => $permohonan->fresh()->load([
-                    'pelanggan',
-                    'paketInternet',
-                    'paketInternetBaru',
-                    'layananDirelokasi',
-                    'riwayatStatus.diubahOleh',
-                    'jadwalKerja',
-                ]),
-            ]);
-        });
-    }
-
-    /** Jadwalkan ulang (mis. setelah DITUNDA) — tanpa teknisi. */
-    public function jadwalkanKerja(JadwalkanResellerRequest $request, PermohonanLayanan $permohonan)
-    {
-        $this->pastikanMilikReseller($permohonan, $request->user());
-
-        $jadwal = $this->jadwalKerjaService->jadwalkan(
-            $permohonan,
-            [],
-            $request->validated('tanggal_kerja'),
-            $request->user(),
+            )
         );
 
-        $permohonan->pelanggan?->notify(new PermohonanStatusNotification(
-            $permohonan,
-            StatusPermohonanEnum::DIJADWALKAN,
-            'Jadwal kunjungan: '.now()->parse($request->validated('tanggal_kerja'))->format('d M Y'),
-        ));
-
-        return response()->json(['data' => $jadwal], 201);
+        return response()->json([
+            'data' => $permohonan->fresh([
+                'pelanggan',
+                'paketInternet',
+                'paketInternetBaru',
+                'layananDirelokasi',
+                'riwayatStatus.diubahOleh',
+                'jadwalKerja',
+            ]),
+        ]);
     }
 }
