@@ -15,7 +15,6 @@ use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\Tagihan;
-use App\Notifications\ResellerEmailBerubahNotification;
 use App\Repositories\Contracts\AdminRepositoryInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,45 +38,6 @@ class ResellerController extends Controller
             ->paginate(20);
 
         return response()->json(['data' => $resellers]);
-    }
-
-    /** Setujui pergantian email reseller: email_baru menjadi email resmi. */
-    public function setujuiEmail(Admin $reseller)
-    {
-        $this->authorize('update', $reseller);
-
-        if (! $reseller->email_baru || $reseller->email_baru === $reseller->email) {
-            abort(422, 'Tidak ada permintaan ganti email yang tertunda.');
-        }
-
-        if (Admin::where('email', $reseller->email_baru)
-            ->where('id', '!=', $reseller->id)
-            ->exists()) {
-            throw ValidationException::withMessages([
-                'email_baru' => ['Email sudah digunakan akun lain. Gunakan tombol Tolak.'],
-            ]);
-        }
-
-        $emailBaru = $reseller->email_baru;
-        $reseller->update(['email' => $emailBaru, 'email_baru' => null]);
-        $reseller->notify(new ResellerEmailBerubahNotification(true, $emailBaru));
-
-        return response()->json(['data' => $reseller->fresh()]);
-    }
-
-    /** Tolak pergantian email: batal, email tetap seperti sekarang. */
-    public function tolakEmail(Admin $reseller)
-    {
-        $this->authorize('update', $reseller);
-
-        if (! $reseller->email_baru) {
-            abort(422, 'Tidak ada permintaan ganti email yang tertunda.');
-        }
-
-        $reseller->update(['email_baru' => null]);
-        $reseller->notify(new ResellerEmailBerubahNotification(false));
-
-        return response()->json(['data' => $reseller->fresh()]);
     }
 
     public function store(SimpanResellerRequest $request)
