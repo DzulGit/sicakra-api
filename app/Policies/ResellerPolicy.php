@@ -32,6 +32,12 @@ class ResellerPolicy
         return $this->diizinkan($admin);
     }
 
+    /** Menyetujui/menolak pergantian email oleh reseller. */
+    public function update(Admin $admin, Admin $reseller): bool
+    {
+        return $this->view($admin, $reseller);
+    }
+
     /**
      * Memantau daftar pelanggan milik reseller (read-only). Tidak ada ability
      * tulis (update/destroy) di policy ini sehingga admin hanya bisa MEMBACA.
