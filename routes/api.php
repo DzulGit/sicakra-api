@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController;
+use App\Http\Controllers\Api\Reseller\TagihanController as ResellerTagihanController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController as ResellerPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
@@ -155,7 +156,6 @@ Route::prefix('admin')->group(function () {
     });
 });
 
-// ===== RESELLER (portal mitra eksternal — data terbatas milik reseller) =====
 Route::prefix('reseller')->group(function () {
     Route::post('login', [AuthAdminController::class, 'loginReseller'])
         ->middleware('throttle:login');
@@ -170,12 +170,23 @@ Route::prefix('reseller')->group(function () {
 
         Route::apiResource('paket-internet', PaketInternetController::class)
             ->parameters(['paket-internet' => 'paketInternet']);
+
         Route::get('paket-internet', [ResellerPaketInternetController::class, 'index']);
         Route::get('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'show']);
         Route::post('paket-internet', [ResellerPaketInternetController::class, 'store']);
         Route::patch('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'update']);
         Route::delete('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'destroy']);
 
+        // TAGIHAN RESELLER
+        Route::get('tagihan/pendaftar-baru', [ResellerTagihanController::class, 'pendaftarBaru']);
+        Route::get('tagihan/pertama/{pelanggan}/preview', [ResellerTagihanController::class, 'previewTagihanPertama']);
+        Route::post('tagihan/pertama/{pelanggan}', [ResellerTagihanController::class, 'generateTagihanPertama']);
+        Route::get('tagihan', [ResellerTagihanController::class, 'index']);
+        Route::get('tagihan/{tagihan}', [ResellerTagihanController::class, 'show']);
+        Route::post('tagihan/{tagihan}/bayar-tunai', [ResellerTagihanController::class, 'bayarTunai']);
+        Route::post('tagihan/{tagihan}/perbarui-link', [ResellerTagihanController::class, 'perbaruiLink']);
+
+        // PERMOHONAN LAYANAN
         Route::get('permohonan-layanan', [ResellerPermohonanLayananController::class, 'index']);
         Route::get('permohonan-layanan/{permohonan}', [ResellerPermohonanLayananController::class, 'show']);
         Route::post('permohonan-layanan', [ResellerPermohonanLayananController::class, 'store']);
