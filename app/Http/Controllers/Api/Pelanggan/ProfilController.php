@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Pelanggan\UbahPasswordRequest;
 use App\Http\Requests\Pelanggan\UbahProfilRequest;
 use App\Http\Requests\Pelanggan\UbahUsernameRequest;
+use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ProfilController extends Controller
@@ -63,8 +63,8 @@ class ProfilController extends Controller
         ]);
 
         $pelanggan = $request->user();
-        
-        $path = Storage::disk('public')->putFile('profil', $request->file('foto'));
+
+        $path = KompresiGambar::simpanKeWebp($request->file('foto'), 'profil');
         $pelanggan->update(['foto_profil' => $path]);
 
         return response()->json(['data' => $pelanggan->fresh()]);

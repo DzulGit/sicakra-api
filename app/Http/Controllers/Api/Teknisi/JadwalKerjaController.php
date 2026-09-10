@@ -9,8 +9,8 @@ use App\Http\Requests\PermohonanLayanan\HasilKerjaRequest;
 use App\Models\JadwalKerja;
 use App\Repositories\Contracts\JadwalKerjaRepositoryInterface;
 use App\Services\JadwalKerjaService;
+use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class JadwalKerjaController extends Controller
 {
@@ -47,7 +47,7 @@ class JadwalKerjaController extends Controller
 
         $fotoDokumentasi = [];
         foreach ($request->file('foto_dokumentasi', []) as $file) {
-            $fotoDokumentasi[] = Storage::disk('public')->putFile('dokumentasi-pekerjaan', $file);
+            $fotoDokumentasi[] = KompresiGambar::simpanKeWebp($file, 'dokumentasi-pekerjaan');
         }
 
         $hasil = $this->jadwalKerjaService->isiHasil(

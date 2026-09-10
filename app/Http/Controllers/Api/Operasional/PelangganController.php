@@ -14,10 +14,10 @@ use App\Notifications\PelangganBaruDariResellerNotification;
 use App\Repositories\Contracts\PelangganRepositoryInterface;
 use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
+use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Storage;
 
 class PelangganController extends Controller
 {
@@ -49,10 +49,10 @@ class PelangganController extends Controller
 
         $permohonan = DB::transaction(function () use ($data, $request, $aktor, $adalahReseller) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? Storage::disk('public')->putFile('ktp', $request->file('foto_ktp'))
+                ? KompresiGambar::simpanKeWebp($request->file('foto_ktp'), 'ktp')
                 : null;
             $pathSelfie = $request->hasFile('foto_selfie_ktp')
-                ? Storage::disk('public')->putFile('selfie-ktp', $request->file('foto_selfie_ktp'))
+                ? KompresiGambar::simpanKeWebp($request->file('foto_selfie_ktp'), 'selfie-ktp')
                 : null;
 
             $pelanggan = Pelanggan::create([

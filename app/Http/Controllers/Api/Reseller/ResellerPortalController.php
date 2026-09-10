@@ -4,22 +4,22 @@ namespace App\Http\Controllers\Api\Reseller;
 
 use App\Enums\StatusLaporanEnum;
 use App\Enums\StatusLayananEnum;
-use App\Enums\TipePaketEnum;
-use App\Enums\StatusTransaksiEnum;
 use App\Enums\StatusPembayaranEnum;
+use App\Enums\StatusTransaksiEnum;
+use App\Enums\TipePaketEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Reseller\DaftarkanPelangganRequest;
-use App\Services\GeneratorNomorService;
-use App\Services\SiklusPenagihanService;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\Tagihan;
+use App\Services\GeneratorNomorService;
+use App\Services\SiklusPenagihanService;
+use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ResellerPortalController extends Controller
 {
@@ -39,8 +39,7 @@ class ResellerPortalController extends Controller
         };
 
         $aktif = $pelangganQuery()
-            ->whereHas('layananInternet', fn ($q) =>
-                $q->where('status', StatusLayananEnum::AKTIF)
+            ->whereHas('layananInternet', fn ($q) => $q->where('status', StatusLayananEnum::AKTIF)
             )
             ->count();
 
@@ -62,12 +61,11 @@ class ResellerPortalController extends Controller
             'pelanggan_aktif' => $aktif,
 
             'kendala_aktif' => $pelangganQuery()
-                ->whereHas('layananInternet.laporanKendala', fn ($q) =>
-                    $q->whereIn('status', [
-                        StatusLaporanEnum::MENUNGGU,
-                        StatusLaporanEnum::DIPROSES,
-                        StatusLaporanEnum::DITUGASKAN,
-                    ])
+                ->whereHas('layananInternet.laporanKendala', fn ($q) => $q->whereIn('status', [
+                    StatusLaporanEnum::MENUNGGU,
+                    StatusLaporanEnum::DIPROSES,
+                    StatusLaporanEnum::DITUGASKAN,
+                ])
                 )
                 ->count(),
 
@@ -154,16 +152,16 @@ class ResellerPortalController extends Controller
             $paket
         ) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? Storage::disk('public')->putFile(
-                    'ktp',
-                    $request->file('foto_ktp')
+                ? KompresiGambar::simpanKeWebp(
+                    $request->file('foto_ktp'),
+                    'ktp'
                 )
                 : null;
 
             $pathSelfie = $request->hasFile('foto_selfie_ktp')
-                ? Storage::disk('public')->putFile(
-                    'selfie-ktp',
-                    $request->file('foto_selfie_ktp')
+                ? KompresiGambar::simpanKeWebp(
+                    $request->file('foto_selfie_ktp'),
+                    'selfie-ktp'
                 )
                 : null;
 
@@ -173,7 +171,7 @@ class ResellerPortalController extends Controller
             * Format ini tetap dipertahankan dari implementasi sebelumnya
             * agar tidak mengubah identitas pelanggan reseller yang sudah ada.
             */
-            $nomorPelanggan = 'RSL' . $reseller->id . '-' . strtoupper(
+            $nomorPelanggan = 'RSL'.$reseller->id.'-'.strtoupper(
                 substr(uniqid(), -6)
             );
 

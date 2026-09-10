@@ -13,9 +13,9 @@ use App\Notifications\LaporanKendalaDiterimaNotification;
 use App\Notifications\LaporanKendalaDitugaskanNotification;
 use App\Notifications\LaporanKendalaStatusNotification;
 use App\Repositories\Contracts\LaporanKendalaRepositoryInterface;
+use App\Support\KompresiGambar;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Storage;
 
 class LaporanKendalaService
 {
@@ -33,7 +33,7 @@ class LaporanKendalaService
             if (isset($data['foto']) && is_array($data['foto'])) {
                 $paths = [];
                 foreach ($data['foto'] as $file) {
-                    $paths[] = Storage::disk('public')->putFile('laporan-kendala', $file);
+                    $paths[] = KompresiGambar::simpanKeWebp($file, 'laporan-kendala');
                 }
 
                 // Simpan sebagai JSON agar mendukung banyak gambar

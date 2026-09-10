@@ -5,9 +5,9 @@ namespace App\Services;
 use App\Enums\JenisPermohonanEnum;
 use App\Models\Pelanggan;
 use App\Models\PermohonanLayanan;
+use App\Support\KompresiGambar;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class PendaftaranService
 {
@@ -60,6 +60,6 @@ class PendaftaranService
 
     private function simpanFoto(UploadedFile $file, string $folder): string
     {
-        return Storage::disk('public')->putFile($folder, $file);
+        return KompresiGambar::simpanKeWebp($file, $folder);
     }
 }
