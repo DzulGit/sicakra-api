@@ -3,9 +3,10 @@
 namespace Tests\Feature\Api;
 
 use App\Enums\PeranAdminEnum;
+use App\Enums\StatusLayananEnum;
 use App\Models\Admin;
 use App\Models\PaketInternet;
-use App\Notifications\PelangganBaruDariResellerNotification;
+use App\Models\Pelanggan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -56,12 +57,10 @@ class ResellerTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_reseller_mendaftarkan_pelanggan_triggers_notifikasi_ke_operasional(): void
+    public function test_reseller_mendaftarkan_pelanggan_langsung_aktif_and_foto_webp(): void
     {
-        $operasional = Admin::factory()->operasional()->create();
-        $superAdmin = Admin::factory()->superAdmin()->create();
         $reseller = Admin::factory()->reseller()->create();
-        $paket = PaketInternet::factory()->create();
+        $paket = PaketInternet::factory()->create(['reseller_id' => $reseller->id]);
         $token = $reseller->createToken('test')->plainTextToken;
 
         $this->withHeader('Authorization', "Bearer {$token}")
@@ -71,28 +70,22 @@ class ResellerTest extends TestCase
                 'nomor_hp' => '081234567890',
                 'email' => 'andi.test@example.com',
                 'alamat_pemasangan' => 'Jl. Test No. 1',
-                'latitude' => -6.2,
-                'longitude' => 106.8,
                 'tipe_paket' => 'reguler',
                 'paket_internet_id' => $paket->id,
                 'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
             ])
             ->assertCreated();
 
-        $this->assertDatabaseHas('pelanggan', [
-            'email' => 'andi.test@example.com',
-            'reseller_id' => $reseller->id,
-        ]);
+        // Bypass alur permohonan/verifikasi: langsung aktif + tak ada notifikasi.
+        $pelanggan = Pelanggan::where('email', 'andi.test@example.com')->first();
+        $this->assertNotNull($pelanggan);
+        $this->assertSame($reseller->id, $pelanggan->reseller_id);
+        $this->assertNotNull($pelanggan->foto_ktp);
+        $this->assertTrue(str_ends_with($pelanggan->foto_ktp, '.webp'));
 
-        $this->assertDatabaseHas('notifications', [
-            'notifiable_id' => $operasional->id,
-            'notifiable_type' => Admin::class,
-            'type' => PelangganBaruDariResellerNotification::class,
-        ]);
-        $this->assertDatabaseHas('notifications', [
-            'notifiable_id' => $superAdmin->id,
-            'notifiable_type' => Admin::class,
-            'type' => PelangganBaruDariResellerNotification::class,
-        ]);
+        $layanan = $pelanggan->layananInternet->first();
+        $this->assertNotNull($layanan);
+        $this->assertEquals(StatusLayananEnum::AKTIF, $layanan->status);
+        $this->assertNull($layanan->permohonan_layanan_id);
     }
 }

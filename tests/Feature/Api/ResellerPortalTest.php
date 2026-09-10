@@ -3,13 +3,13 @@
 namespace Tests\Feature\Api;
 
 use App\Enums\PeranAdminEnum;
-use App\Enums\StatusPermohonanEnum;
+use App\Enums\StatusLayananEnum;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
-use App\Models\PermohonanLayanan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -121,9 +121,7 @@ class ResellerPortalTest extends TestCase
     public function test_reseller_mendaftarkan_pelanggan_tercataat_sebagai_miliknya(): void
     {
         $reseller = Admin::factory()->reseller()->create();
-        $operasional = Admin::factory()->operasional()->create();
-        $superAdmin = Admin::factory()->superAdmin()->create();
-        $paket = PaketInternet::factory()->create();
+        $paket = PaketInternet::factory()->create(['reseller_id' => $reseller->id]);
         $token = $reseller->createToken('test')->plainTextToken;
 
         $this->withHeader('Authorization', "Bearer {$token}")
@@ -135,20 +133,24 @@ class ResellerPortalTest extends TestCase
                 'alamat_pemasangan' => 'Jl. Portal No. 1',
                 'tipe_paket' => 'reguler',
                 'paket_internet_id' => $paket->id,
+                'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
             ])
             ->assertCreated();
 
-        $this->assertDatabaseHas('pelanggan', [
-            'email' => 'andi.portal@example.com',
-            'reseller_id' => $reseller->id,
-        ]);
+        // Reseller bypass permohonan/verifikasi: pelanggan langsung AKTIF.
+        $pelanggan = Pelanggan::where('email', 'andi.portal@example.com')->first();
+        $this->assertNotNull($pelanggan);
+        $this->assertSame($reseller->id, $pelanggan->reseller_id);
+        $this->assertStringStartsWith('RSL', $pelanggan->nomor_pelanggan);
 
-        $permohonan = PermohonanLayanan::whereHas('pelanggan', fn ($q) => $q->where('email', 'andi.portal@example.com'))->first();
-        $this->assertNotNull($permohonan);
-        $this->assertEquals(StatusPermohonanEnum::MENUNGGU_VERIFIKASI, $permohonan->status);
+        // Foto yang diunggah harus otomatis terkompresi jadi WebP.
+        $this->assertNotNull($pelanggan->foto_ktp);
+        $this->assertTrue(str_ends_with($pelanggan->foto_ktp, '.webp'));
 
-        // Notifikasi verifikasi dikirim ke operasional + super admin
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $operasional->id]);
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $superAdmin->id]);
+        $layanan = $pelanggan->layananInternet->first();
+        $this->assertNotNull($layanan);
+        $this->assertSame($paket->id, $layanan->paket_internet_id);
+        $this->assertEquals(StatusLayananEnum::AKTIF, $layanan->status);
+        $this->assertNull($layanan->permohonan_layanan_id);
     }
 }
