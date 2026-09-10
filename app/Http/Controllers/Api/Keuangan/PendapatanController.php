@@ -18,6 +18,9 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class PendapatanController extends Controller
 {
+    /** Scope reseller (null = admin keuangan melihat semua). */
+    protected ?int $resellerId = null;
+
     private const NAMA_BULAN = [
         1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun',
         7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
@@ -28,6 +31,7 @@ class PendapatanController extends Controller
     {
         $data = Pelanggan::query()
             ->select('id', 'nama_lengkap', 'nomor_pelanggan')
+            ->when($this->resellerId, fn ($q) => $q->where('reseller_id', $this->resellerId))
             ->with(['layananInternet' => fn ($q) => $q->select('id', 'pelanggan_id', 'provinsi', 'kota')])
             ->orderBy('nama_lengkap')
             ->get()
@@ -140,7 +144,9 @@ class PendapatanController extends Controller
         sort($bulanList);
 
         // 1. Ambil pelanggan
-        $pelangganQuery = Pelanggan::query()->select('id', 'nama_lengkap', 'nomor_pelanggan');
+        $pelangganQuery = Pelanggan::query()
+            ->select('id', 'nama_lengkap', 'nomor_pelanggan')
+            ->when($this->resellerId, fn ($q) => $q->where('reseller_id', $this->resellerId));
         $pelangganIds = $request->input('pelanggan_ids');
         if (is_array($pelangganIds) && count($pelangganIds) > 0) {
             $pelangganQuery->whereIn('id', array_map('intval', $pelangganIds));
@@ -150,7 +156,8 @@ class PendapatanController extends Controller
         // 2. Ambil semua layanan internet aktif beserta tanggal_aktif
         $layananQuery = LayananInternet::query()
             ->select('id', 'pelanggan_id', 'tanggal_aktif', 'status')
-            ->where('status', 'aktif');
+            ->where('status', 'aktif')
+            ->when($this->resellerId, fn ($q) => $q->whereHas('pelanggan', fn ($qq) => $qq->where('reseller_id', $this->resellerId)));
         if (is_array($pelangganIds) && count($pelangganIds) > 0) {
             $layananQuery->whereIn('pelanggan_id', array_map('intval', $pelangganIds));
         }
@@ -276,7 +283,11 @@ class PendapatanController extends Controller
 
     private function tagihanQuery(Request $request): Builder
     {
-        $query = Tagihan::query();
+        $query = Tagihan::query()
+            ->when($this->resellerId, fn ($q) => $q->whereHas(
+                'layananInternet.pelanggan',
+                fn ($qq) => $qq->where('reseller_id', $this->resellerId)
+            ));
 
         $tahun = $request->integer('tahun', now()->year);
         $query->where('periode_tahun', $tahun);
@@ -316,6 +327,12 @@ class PendapatanController extends Controller
 
     private function applyPelangganFilter(Builder $query, Request $request): void
     {
+        if ($this->resellerId !== null) {
+            $query->whereHas('tagihan.layananInternet.pelanggan', function (Builder $q) {
+                $q->where('reseller_id', $this->resellerId);
+            });
+        }
+
         $pelangganIds = $request->input('pelanggan_ids');
 
         if (is_array($pelangganIds) && count($pelangganIds) > 0) {

@@ -23,8 +23,10 @@ use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController;
+use App\Http\Controllers\Api\Reseller\ResellerPendapatanController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
+use App\Http\Controllers\Api\Reseller\ResellerProfilController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
 use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
@@ -104,6 +106,9 @@ Route::prefix('admin')->group(function () {
             Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
             Route::post('pelanggan/tanggal-tagihan/bulk', [PelangganController::class, 'bulkAturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
+
+            Route::patch('reseller/{reseller}/setujui-email', [ResellerController::class, 'setujuiEmail']);
+            Route::patch('reseller/{reseller}/tolak-email', [ResellerController::class, 'tolakEmail']);
         });
 
         // ----- Teknisi -----
@@ -163,9 +168,20 @@ Route::prefix('reseller')->group(function () {
         Route::post('logout', [AuthAdminController::class, 'logout']);
 
         Route::get('dashboard', [ResellerPortalController::class, 'dashboard']);
+        Route::get('pendapatan', [ResellerPendapatanController::class, 'index']);
+        Route::get('pendapatan/pelanggan-list', [ResellerPendapatanController::class, 'pelangganList']);
+        Route::post('pendapatan/report', [ResellerPendapatanController::class, 'report']);
+        Route::post('pendapatan/report/excel', [ResellerPendapatanController::class, 'reportExcel']);
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
+
+        Route::get('profil', [ResellerProfilController::class, 'show']);
+        Route::patch('profil', [ResellerProfilController::class, 'update']);
+        Route::patch('profil/password', [ResellerProfilController::class, 'ubahPassword']);
+        Route::post('profil/foto', [ResellerProfilController::class, 'ubahFoto']);
+        Route::post('profil/email', [ResellerProfilController::class, 'mintaUbahEmail']);
+        Route::delete('profil/email', [ResellerProfilController::class, 'batalUbahEmail']);
 
         Route::apiResource('paket-internet', PaketInternetController::class)
             ->parameters(['paket-internet' => 'paketInternet']);
