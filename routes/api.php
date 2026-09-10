@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
+use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
@@ -160,6 +161,13 @@ Route::prefix('reseller')->group(function () {
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
+
+        Route::get('permohonan-layanan', [ResellerPermohonanLayananController::class, 'index']);
+        Route::get('permohonan-layanan/{permohonan}', [ResellerPermohonanLayananController::class, 'show']);
+        Route::post('permohonan-layanan', [ResellerPermohonanLayananController::class, 'store']);
+        Route::patch('permohonan-layanan/{permohonan}/verifikasi', [ResellerPermohonanLayananController::class, 'verifikasi']);
+        Route::post('permohonan-layanan/{permohonan}/verifikasi-dan-jadwalkan', [ResellerPermohonanLayananController::class, 'verifikasiDanJadwalkan']);
+        Route::post('permohonan-layanan/{permohonan}/jadwalkan-kerja', [ResellerPermohonanLayananController::class, 'jadwalkanKerja']);
     });
 });
 
