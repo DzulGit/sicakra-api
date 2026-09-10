@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController;
+use App\Http\Controllers\Api\Reseller\PaketInternetController as ResellerPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
@@ -169,6 +170,11 @@ Route::prefix('reseller')->group(function () {
 
         Route::apiResource('paket-internet', PaketInternetController::class)
             ->parameters(['paket-internet' => 'paketInternet']);
+        Route::get('paket-internet', [ResellerPaketInternetController::class, 'index']);
+        Route::get('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'show']);
+        Route::post('paket-internet', [ResellerPaketInternetController::class, 'store']);
+        Route::patch('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'update']);
+        Route::delete('paket-internet/{paketInternet}', [ResellerPaketInternetController::class, 'destroy']);
 
         Route::get('permohonan-layanan', [ResellerPermohonanLayananController::class, 'index']);
         Route::get('permohonan-layanan/{permohonan}', [ResellerPermohonanLayananController::class, 'show']);
