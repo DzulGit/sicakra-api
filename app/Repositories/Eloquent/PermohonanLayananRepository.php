@@ -23,12 +23,22 @@ class PermohonanLayananRepository implements PermohonanLayananRepositoryInterfac
 
     public function find(int $id, array $with = []): ?PermohonanLayanan
     {
-        return PermohonanLayanan::with($with)->find($id);
+        return PermohonanLayanan::query()
+            ->whereHas('pelanggan', function ($query) {
+                $query->whereNull('reseller_id');
+            })
+            ->with($with)
+            ->find($id);
     }
 
     public function paginate(PermohonanLayananFilter $filter, int $perPage = 20): LengthAwarePaginator
     {
-        $query = PermohonanLayanan::query()->with('pelanggan')->latest();
+        $query = PermohonanLayanan::query()
+            ->whereHas('pelanggan', function ($query) {
+                $query->whereNull('reseller_id');
+            })
+            ->with('pelanggan')
+            ->latest();
 
         return $filter->apply($query)->paginate($perPage);
     }

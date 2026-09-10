@@ -11,12 +11,19 @@ class PelangganRepository implements PelangganRepositoryInterface
 {
     public function find(int $id, array $with = []): ?Pelanggan
     {
-        return Pelanggan::with($with)->find($id);
+        return Pelanggan::query()
+            ->whereNull('reseller_id')
+            ->with($with)
+            ->find($id);
     }
 
     public function paginate(PelangganFilter $filter, int $perPage = 20): LengthAwarePaginator
     {
-        $query = Pelanggan::query()->with('layananInternet.paketInternet')->latest();
+        $query = Pelanggan::query()
+            ->whereNull('reseller_id')
+            ->with('layananInternet.paketInternet')
+            ->latest();
+
         return $filter->apply($query)->paginate($perPage);
     }
 }
