@@ -62,15 +62,21 @@ class TagihanController extends Controller
 
         $pelanggan = Pelanggan::query()
             ->where('reseller_id', $resellerId)
+
+            // Harus memiliki minimal 1 layanan aktif
             ->whereHas('layananInternet', function ($query) {
-                $query->where('status', StatusLayananEnum::AKTIF)
-                      ->whereDoesntHave('tagihan');
+                $query->where('status', StatusLayananEnum::AKTIF);
             })
+
+            // Dan pelanggan BELUM PERNAH memiliki tagihan
+            // dari layanan mana pun
+            ->whereDoesntHave('layananInternet.tagihan')
+
             ->with([
                 'layananInternet' => function ($query) {
-                    $query->where('status', StatusLayananEnum::AKTIF)
-                          ->whereDoesntHave('tagihan')
-                          ->with('paketInternet');
+                    $query
+                        ->where('status', StatusLayananEnum::AKTIF)
+                        ->with('paketInternet');
                 },
             ])
             ->orderBy('nama_lengkap')
