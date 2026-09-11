@@ -21,7 +21,10 @@ class TagihanRepository implements TagihanRepositoryInterface
 
     public function paginateSemua(TagihanFilter $filter, int $perPage = 20): LengthAwarePaginator
     {
-        $query = Tagihan::query()->with('layananInternet.pelanggan')->latest();
+        $query = Tagihan::query()
+            ->with('layananInternet.pelanggan')
+            ->whereHas('layananInternet.pelanggan', function ($query) {$query->whereNull('reseller_id');})
+            ->latest();
 
         return $filter->apply($query)->paginate($perPage);
     }
