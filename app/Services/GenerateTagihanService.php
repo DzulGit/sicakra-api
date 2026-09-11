@@ -132,8 +132,12 @@ class GenerateTagihanService
             $tanggalAktif->copy()->endOfMonth()
         ) + 1;
 
+        // $nominalProrata = round(
+        //     ($hargaBulanan / $jumlahHariDalamBulan) * $jumlahHari,
+        //     2
+        // );
         $nominalProrata = round(
-            ($hargaBulanan / $jumlahHariDalamBulan) * $jumlahHari,
+            ($jumlahHari / $jumlahHariDalamBulan) * $hargaBulanan,
             2
         );
 
