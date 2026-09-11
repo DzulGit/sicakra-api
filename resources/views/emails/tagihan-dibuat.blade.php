@@ -8,13 +8,12 @@
         <div><strong>Paket:</strong> {{ $paket }}</div>
         <div><strong>Periode:</strong> {{ $periode }}</div>
         <div><strong>Total:</strong> Rp {{ $total }}</div>
-        <div><strong>Jatuh Tempo:</strong> {{ $jatuhTempo }}</div>
     </div>
 
     @if($urlBayar)
         <a class="btn" href="{{ $urlBayar }}">Bayar Sekarang</a>
     @else
-        <p>Silakan selesaikan pembayaran sebelum tanggal jatuh tempo agar layanan tetap aktif.</p>
+        <p>Silakan selesaikan pembayaran agar layanan tetap aktif.</p>
     @endif
 
     <p class="muted">Terima kasih telah menggunakan layanan Sicakra.</p>

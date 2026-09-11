@@ -71,7 +71,6 @@ class DashboardPelangganController extends Controller
                     'nomor_tagihan' => $t->nomor_tagihan,
                     'total' => (float) ($t->total_tagihan ?? 0),
                     'status_pembayaran' => $t->status_pembayaran->value,
-                    'tenggat' => $t->tanggal_jatuh_tempo?->toDateString(),
                     'layanan' => $t->layananInternet?->paketInternet?->nama_paket ?? '-',
                 ]),
                 'kendala_terbaru' => $kendala->map(fn ($k) => [

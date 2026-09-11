@@ -282,7 +282,7 @@ class DemoSeeder extends Seeder
             'email' => $username.'@sicakra-demo.com',
             'password' => 'password123',
             'password_sudah_dibuat' => true,
-            'tanggal_tagihan' => mt_rand(1, 3) * 5, // 5/10/15 — membuat variasi jatuh tempo
+            'tanggal_tagihan' => mt_rand(1, 3) * 5, // 5/10/15 — variasi tanggal tagihan
             'foto_ktp' => 'ktp/dummy.jpg',
             'foto_selfie_ktp' => 'selfie-ktp/dummy.jpg',
         ]);
@@ -473,11 +473,6 @@ class DemoSeeder extends Seeder
         $periode = Carbon::today();
         $jumlahBulan = ($status === StatusPembayaranEnum::SUDAH_BAYAR && $layanan->id % 7 === 0) ? 2 : 1;
 
-        // Siklus jatuh tempo = hari tagih di bulan periode, snapped.
-        $jatuhTempo = ($status === StatusPembayaranEnum::KEDALUWARSA)
-            ? $this->snapKeBulan($periode->copy()->subMonthNoOverflow(1), $hariTagih)
-            : $this->snapKeBulan($periode->copy(), $hariTagih);
-
         $tagihan = Tagihan::create([
             'nomor_tagihan' => $this->generator->generate(Tagihan::class, 'nomor_tagihan', 'INV'),
             'layanan_internet_id' => $layanan->id,
@@ -488,13 +483,12 @@ class DemoSeeder extends Seeder
             'harga_snapshot' => $paket->harga,
             'total_tagihan' => $paket->harga * $jumlahBulan,
             'jumlah_bulan' => $jumlahBulan,
-            'tanggal_jatuh_tempo' => $jatuhTempo->toDateString(),
             'status_pembayaran' => $status,
         ]);
 
         switch ($status) {
             case StatusPembayaranEnum::SUDAH_BAYAR:
-                $dibayarPada = Carbon::parse($jatuhTempo->toDateString())
+                $dibayarPada = $periode->copy()
                     ->addDays(mt_rand(1, 3))
                     ->setTime(mt_rand(8, 16), mt_rand(0, 59));
                 if ($dibayarPada->gt(Carbon::today())) {

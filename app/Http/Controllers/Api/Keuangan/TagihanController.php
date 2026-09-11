@@ -6,6 +6,7 @@ use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
+use App\Events\TagihanDibuat;
 use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
@@ -92,7 +93,7 @@ class TagihanController extends Controller
      * Buat tagihan untuk periode tertentu yang dipilih admin (pilihan bulan tagihan)
      * — fitur DARURAT saja. Preview & konfirmasi ditangani frontend sebelum mengirim
      * request ini. Periode yang sudah ter-cover tagihan (UNPAID maupun PAID) DITOLAK
-     * dengan error jelas; sistem penagihan harian normal dijalankan cron job.
+     * dengan error jelas.
      */
     public function generateUntukPelanggan(Request $request, Pelanggan $pelanggan)
     {
@@ -101,14 +102,10 @@ class TagihanController extends Controller
         $validated = $request->validate([
             'periode_bulan' => 'required|integer|min:1|max:12',
             'periode_tahun' => 'required|integer|min:2020|max:2100',
-            'jumlah_hari_jatuh_tempo' => ['sometimes', 'integer', 'min:1', 'max:31'],
         ]);
 
         $periodeBulan = (int) $validated['periode_bulan'];
         $periodeTahun = (int) $validated['periode_tahun'];
-        $jumlahHariJatuhTempo = (int) ($validated['jumlah_hari_jatuh_tempo'] ?? 7);
-
-        $tanggalJatuhTempo = Carbon::today()->addDays($jumlahHariJatuhTempo);
 
         $layananAktif = $pelanggan->layananInternet()
             ->where('status', StatusLayananEnum::AKTIF)
@@ -137,7 +134,6 @@ class TagihanController extends Controller
                 $layanan,
                 $periodeBulan,
                 $periodeTahun,
-                tanggalJatuhTempo: $tanggalJatuhTempo,
             );
 
             if ($tagihan) {
@@ -246,12 +242,6 @@ class TagihanController extends Controller
                 'numeric',
                 'min:0',
             ],
-            'jumlah_hari_jatuh_tempo' => [
-                'sometimes',
-                'integer',
-                'min:1',
-                'max:31',
-            ],
         ]);
 
         $layanan = $pelanggan->layananInternet()
@@ -274,20 +264,12 @@ class TagihanController extends Controller
             ], 422);
         }
 
-        $jumlahHariJatuhTempo = (int) (
-            $validated['jumlah_hari_jatuh_tempo'] ?? 7
-        );
-
-        $tanggalJatuhTempo = Carbon::today()
-            ->addDays($jumlahHariJatuhTempo);
-
         $tagihan = $this->generateTagihanService->generateTagihanPertama(
             $layanan,
             $validated['mode'],
             isset($validated['nominal_manual'])
                 ? (float) $validated['nominal_manual']
                 : null,
-            $tanggalJatuhTempo,
         );
 
         if (! $tagihan) {
@@ -441,5 +423,132 @@ class TagihanController extends Controller
     }
 
     // Sengaja TIDAK ADA store()/update() — selain generate manual di atas,
-    // Tagihan dibuat otomatis oleh sistem (GenerateTagihanMassalJob).
+    // Tagihan draft dibuat oleh cron bulanan (tagihan:generate-draft).
+
+    /**
+     * List tagihan draft (belum_diterbitkan) untuk halaman Terbitkan Tagihan.
+     * Hanya tampilkan tagihan dari pelanggan yang AKTIF dan pernah punya tagihan sebelumnya.
+     */
+    public function draftIndex(Request $request)
+    {
+        $this->authorize('viewAny', Tagihan::class);
+
+        $perPage = $request->integer('per_page', 20);
+        $periodeBulan = $request->integer('periode_bulan');
+        $periodeTahun = $request->integer('periode_tahun');
+
+        $query = Tagihan::draft()
+            ->whereHas('layananInternet', function ($q) {
+                $q->where('status', StatusLayananEnum::AKTIF)
+                    ->whereHas('pelanggan', function ($pq) {
+                        // Validasi: pelanggan harus pernah punya tagihan sebelumnya
+                        $pq->whereHas('layananInternet.tagihan', function ($tq) {
+                            $tq->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN);
+                        });
+                    });
+            })
+            ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
+
+        if ($periodeBulan) {
+            $query->where('periode_bulan', $periodeBulan);
+        }
+        if ($periodeTahun) {
+            $query->where('periode_tahun', $periodeTahun);
+        }
+
+        $tagihan = $query->latest()->paginate($perPage);
+
+        return response()->json(['data' => $tagihan]);
+    }
+
+    /**
+     * Terbitkan tagihan draft — ubah status ke belum_bayar & dispatch TagihanDibuat event
+     * untuk trigger pembuatan Xendit invoice + notifikasi ke pelanggan.
+     *
+     * Validasi: tagihan harus belum_diterbitkan, dan pelanggan harus pernah punya tagihan.
+     */
+    public function terbitkan(Request $request)
+    {
+        $this->authorize('create', Tagihan::class);
+
+        $validated = $request->validate([
+            'tagihan_ids' => 'required|array|min:1',
+            'tagihan_ids.*' => 'required|integer|exists:tagihan,id',
+            'nominal' => 'nullable|array',
+            'nominal.*' => 'required|numeric|min:0',
+        ]);
+
+        $tagihanIds = $validated['tagihan_ids'];
+        $nominals = $validated['nominal'] ?? [];
+
+        $berhasil = 0;
+        $gagal = 0;
+        $pesanGagal = [];
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($tagihanIds as $tagihanId) {
+                $tagihan = Tagihan::find($tagihanId);
+
+                if (! $tagihan || $tagihan->status_pembayaran !== StatusPembayaranEnum::BELUM_DITERBITKAN) {
+                    $gagal++;
+                    $pesanGagal[] = "Tagihan #{$tagihanId} tidak valid atau sudah diterbitkan.";
+                    continue;
+                }
+
+                // Validasi: pelanggan harus pernah punya tagihan sebelumnya
+                $layanan = $tagihan->layananInternet;
+                if (! $layanan || ! $layanan->pelanggan) {
+                    $gagal++;
+                    $pesanGagal[] = "Tagihan #{$tagihanId}: pelanggan tidak ditemukan.";
+                    continue;
+                }
+
+                $pelanggan = $layanan->pelanggan;
+                $sudahPunyaTagihan = Tagihan::where('layanan_internet_id', $layanan->id)
+                    ->where('id', '!=', $tagihanId)
+                    ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
+                    ->exists();
+
+                if (! $sudahPunyaTagihan) {
+                    $gagal++;
+                    $pesanGagal[] = "Pelanggan {$pelanggan->nama_lengkap} belum pernah punya tagihan sebelumnya.";
+                    continue;
+                }
+
+                // Update nominal jika dikirim
+                if (isset($nominals[$tagihanId])) {
+                    $tagihan->update([
+                        'total_tagihan' => $nominals[$tagihanId],
+                    ]);
+                }
+
+                // Ubah status & dispatch event
+                $tagihan->update([
+                    'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+                ]);
+
+                TagihanDibuat::dispatch($tagihan);
+
+                $berhasil++;
+            }
+
+            DB::commit();
+
+            $pesan = "{$berhasil} tagihan berhasil diterbitkan.";
+            if ($gagal > 0) {
+                $pesan .= " {$gagal} gagal: " . implode('; ', $pesanGagal);
+            }
+
+            return response()->json([
+                'message' => $pesan,
+                'berhasil' => $berhasil,
+                'gagal' => $gagal,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Gagal menerbitkan tagihan: ' . $e->getMessage()], 500);
+        }
+    }
 }

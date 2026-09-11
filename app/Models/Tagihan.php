@@ -24,7 +24,6 @@ class Tagihan extends Model
         'harga_snapshot',
         'total_tagihan',
         'jumlah_bulan',
-        'tanggal_jatuh_tempo',
         'status_pembayaran',
         'xendit_invoice_id',
         'xendit_external_id',
@@ -38,7 +37,6 @@ class Tagihan extends Model
 
     protected $casts = [
         'status_pembayaran' => StatusPembayaranEnum::class,
-        'tanggal_jatuh_tempo' => 'date',
         'dibayar_pada' => 'datetime',
         'xendit_invoice_expires_at' => 'datetime',
         'harga_snapshot' => 'decimal:2',
@@ -83,5 +81,10 @@ class Tagihan extends Model
     public function pembayaran(): HasMany
     {
         return $this->hasMany(Pembayaran::class, 'tagihan_id');
+    }
+
+    public function scopeDraft($query)
+    {
+        return $query->where('status_pembayaran', StatusPembayaranEnum::BELUM_DITERBITKAN);
     }
 }

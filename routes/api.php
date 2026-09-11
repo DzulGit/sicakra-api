@@ -134,6 +134,9 @@ Route::prefix('admin')->group(function () {
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
 
+            Route::get('tagihan/draft', [KeuanganTagihanController::class, 'draftIndex']);
+            Route::post('tagihan/terbitkan', [KeuanganTagihanController::class, 'terbitkan']);
+
             Route::get('tagihan/pertama/{pelanggan}/preview', [KeuanganTagihanController::class, 'previewTagihanPertama']);
             Route::post('tagihan/pertama/{pelanggan}', [KeuanganTagihanController::class, 'generateTagihanPertama']);
 
@@ -195,6 +198,8 @@ Route::prefix('reseller')->group(function () {
         Route::get('tagihan/pendaftar-baru', [ResellerTagihanController::class, 'pendaftarBaru']);
         Route::get('tagihan/pertama/{pelanggan}/preview', [ResellerTagihanController::class, 'previewTagihanPertama']);
         Route::post('tagihan/pertama/{pelanggan}', [ResellerTagihanController::class, 'generateTagihanPertama']);
+        Route::get('tagihan/draft', [ResellerTagihanController::class, 'draftIndex']);
+        Route::post('tagihan/terbitkan', [ResellerTagihanController::class, 'terbitkan']);
         Route::get('tagihan', [ResellerTagihanController::class, 'index']);
         Route::get('tagihan/{tagihan}', [ResellerTagihanController::class, 'show']);
         Route::post('tagihan/{tagihan}/bayar-tunai', [ResellerTagihanController::class, 'bayarTunai']);

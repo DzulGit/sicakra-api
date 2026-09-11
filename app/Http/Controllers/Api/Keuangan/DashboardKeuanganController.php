@@ -17,11 +17,7 @@ class DashboardKeuanganController extends Controller
         $pembayaranHariIni = Pembayaran::where('status', StatusTransaksiEnum::BERHASIL)
             ->whereDate('dibayar_pada', $hariIni);
 
-        $tertunggak = Tagihan::where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR)
-            ->whereDate('tanggal_jatuh_tempo', '<', $hariIni);
-
-        $jatuhTempoMingguIni = Tagihan::where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR)
-            ->whereBetween('tanggal_jatuh_tempo', [$hariIni, now()->addDays(7)->toDateString()]);
+        $tertunggak = Tagihan::where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR);
 
         $pendapatanBulanIni = Pembayaran::where('status', StatusTransaksiEnum::BERHASIL)
             ->whereMonth('dibayar_pada', now()->month)
@@ -33,7 +29,6 @@ class DashboardKeuanganController extends Controller
             'total_pembayaran_hari_ini' => $this->rupiah((clone $pembayaranHariIni)->sum('jumlah_dibayar')),
             'tagihan_tertunggak' => (clone $tertunggak)->count(),
             'total_tertunggak' => $this->rupiah((clone $tertunggak)->sum('total_tagihan')),
-            'jatuh_tempo_minggu_ini' => $jatuhTempoMingguIni->count(),
             'pendapatan_bulan_ini' => $this->rupiah($pendapatanBulanIni),
         ];
 
@@ -83,19 +78,12 @@ class DashboardKeuanganController extends Controller
                 'waktu' => $item->dibayar_pada?->format('d M Y H:i'),
             ]);
 
-        $tagihanJatuhTempo = $jatuhTempoMingguIni
-            ->with('layananInternet.pelanggan')
-            ->orderBy('tanggal_jatuh_tempo')
-            ->take(10)
-            ->get();
-
         return response()->json([
             'data' => [
                 'stats' => $stats,
                 'tren_pendapatan' => $trenPendapatan,
                 'distribusi_pembayaran' => $distribusiPembayaran,
                 'pembayaran_terbaru' => $pembayaranTerbaru,
-                'tagihan_akan_jatuh_tempo' => $tagihanJatuhTempo,
             ],
         ]);
     }

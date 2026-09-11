@@ -22,7 +22,6 @@ class TagihanFactory extends Factory
             'kecepatan_snapshot_mbps' => fake()->numberBetween(10, 100),
             'harga_snapshot' => 150000,
             'total_tagihan' => 150000,
-            'tanggal_jatuh_tempo' => now()->addDays(15)->toDateString(),
             'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
         ];
     }

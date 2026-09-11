@@ -6,6 +6,7 @@ use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
+use App\Events\TagihanDibuat;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
@@ -121,7 +122,6 @@ class TagihanController extends Controller
             'layanan_internet_id' => 'required|integer',
             'mode' => 'required|string|in:prorata,full',
             'nominal_manual' => 'nullable|numeric|min:0',
-            'jumlah_hari_jatuh_tempo' => 'sometimes|integer|min:1|max:31',
         ]);
 
         $layanan = $pelanggan->layananInternet()
@@ -134,15 +134,10 @@ class TagihanController extends Controller
             return response()->json(['message' => 'Tagihan pertama sudah pernah dibuat.'], 422);
         }
 
-        // Karena siklus tagihan dipatok tanggal 1 bulan depan, tanggal jatuh tempo bisa diarahkan ke akhir bulan ini atau tetap menggunakan offset hari.
-        $jumlahHariJatuhTempo = (int) ($validated['jumlah_hari_jatuh_tempo'] ?? 7);
-        $tanggalJatuhTempo = Carbon::today()->addDays($jumlahHariJatuhTempo);
-
         $tagihan = $this->generateTagihanService->generateTagihanPertama(
             $layanan,
             $validated['mode'],
             isset($validated['nominal_manual']) ? (float) $validated['nominal_manual'] : null,
-            $tanggalJatuhTempo,
         );
 
         if (!$tagihan) return response()->json(['message' => 'Tagihan pertama gagal dibuat.'], 422);
@@ -236,5 +231,131 @@ class TagihanController extends Controller
             'message' => 'Link pembayaran berhasil diperbarui.',
             'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
         ]);
+    }
+
+    /**
+     * List tagihan draft (belum_diterbitkan) untuk pelanggan milik reseller ini.
+     * Hanya tampilkan pelanggan yang AKTIF dan pernah punya tagihan sebelumnya.
+     */
+    public function draftIndex(Request $request)
+    {
+        $resellerId = $request->user()->id;
+        $perPage = $request->integer('per_page', 20);
+        $periodeBulan = $request->integer('periode_bulan');
+        $periodeTahun = $request->integer('periode_tahun');
+
+        $query = Tagihan::draft()
+            ->whereHas('layananInternet.pelanggan', function ($q) use ($resellerId) {
+                $q->where('reseller_id', $resellerId);
+            })
+            ->whereHas('layananInternet', function ($q) {
+                $q->where('status', StatusLayananEnum::AKTIF)
+                    ->whereHas('pelanggan', function ($pq) {
+                        // Validasi: pelanggan harus pernah punya tagihan sebelumnya
+                        $pq->whereHas('layananInternet.tagihan', function ($tq) {
+                            $tq->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN);
+                        });
+                    });
+            })
+            ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
+
+        if ($periodeBulan) {
+            $query->where('periode_bulan', $periodeBulan);
+        }
+        if ($periodeTahun) {
+            $query->where('periode_tahun', $periodeTahun);
+        }
+
+        $tagihan = $query->latest()->paginate($perPage);
+
+        return response()->json(['data' => $tagihan]);
+    }
+
+    /**
+     * Terbitkan tagihan draft untuk pelanggan milik reseller ini.
+     */
+    public function terbitkan(Request $request)
+    {
+        $resellerId = $request->user()->id;
+
+        $validated = $request->validate([
+            'tagihan_ids' => 'required|array|min:1',
+            'tagihan_ids.*' => 'required|integer|exists:tagihan,id',
+            'nominal' => 'nullable|array',
+            'nominal.*' => 'required|numeric|min:0',
+        ]);
+
+        $tagihanIds = $validated['tagihan_ids'];
+        $nominals = $validated['nominal'] ?? [];
+
+        $berhasil = 0;
+        $gagal = 0;
+        $pesanGagal = [];
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($tagihanIds as $tagihanId) {
+                $tagihan = Tagihan::find($tagihanId);
+
+                if (! $tagihan || $tagihan->status_pembayaran !== StatusPembayaranEnum::BELUM_DITERBITKAN) {
+                    $gagal++;
+                    $pesanGagal[] = "Tagihan #{$tagihanId} tidak valid atau sudah diterbitkan.";
+                    continue;
+                }
+
+                // Validasi ownership reseller
+                $layanan = $tagihan->layananInternet;
+                if (! $layanan || ! $layanan->pelanggan || $layanan->pelanggan->reseller_id !== $resellerId) {
+                    $gagal++;
+                    $pesanGagal[] = "Tagihan #{$tagihanId} bukan milik reseller ini.";
+                    continue;
+                }
+
+                // Validasi: pelanggan harus pernah punya tagihan sebelumnya
+                $sudahPunyaTagihan = Tagihan::where('layanan_internet_id', $layanan->id)
+                    ->where('id', '!=', $tagihanId)
+                    ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
+                    ->exists();
+
+                if (! $sudahPunyaTagihan) {
+                    $gagal++;
+                    $pesanGagal[] = "Pelanggan {$layanan->pelanggan->nama_lengkap} belum pernah punya tagihan sebelumnya.";
+                    continue;
+                }
+
+                // Update nominal jika dikirim
+                if (isset($nominals[$tagihanId])) {
+                    $tagihan->update([
+                        'total_tagihan' => $nominals[$tagihanId],
+                    ]);
+                }
+
+                // Ubah status & dispatch event
+                $tagihan->update([
+                    'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+                ]);
+
+                TagihanDibuat::dispatch($tagihan);
+
+                $berhasil++;
+            }
+
+            DB::commit();
+
+            $pesan = "{$berhasil} tagihan berhasil diterbitkan.";
+            if ($gagal > 0) {
+                $pesan .= " {$gagal} gagal: " . implode('; ', $pesanGagal);
+            }
+
+            return response()->json([
+                'message' => $pesan,
+                'berhasil' => $berhasil,
+                'gagal' => $gagal,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Gagal menerbitkan tagihan: ' . $e->getMessage()], 500);
+        }
     }
 }
