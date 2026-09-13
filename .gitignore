@@ -24,3 +24,5 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 sicakra_local/
+# Database SQLite lokal - jangan commit
+sicakra_local
