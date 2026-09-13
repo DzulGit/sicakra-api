@@ -228,7 +228,8 @@ class XenditWebhookController extends Controller
             ) {
                 $this->pembayaranAllocationService
                     ->gunakanSaldoKredit(
-                        $pembayaran->pelanggan
+                        $pembayaran->pelanggan,
+                        $pembayaran->tagihan_terpilih
                     );
             }
 

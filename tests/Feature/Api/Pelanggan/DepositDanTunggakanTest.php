@@ -173,7 +173,7 @@ class DepositDanTunggakanTest extends TestCase
 
     public function test_bayar_gabungan_bisa_memilih_tagihan_dan_pakai_deposit(): void
     {
-        [$pelanggan, $tagihan1] = $this->buatTagihan(1, 2026, 100000);
+        [$pelanggan, $tagihan1] = $this->buatTagihan(1, 2026, 200000);
         $tagihan2 = Tagihan::factory()->create([
             'layanan_internet_id' => $tagihan1->layanan_internet_id,
             'periode_bulan' => 2,
@@ -279,9 +279,9 @@ class DepositDanTunggakanTest extends TestCase
         ])->assertStatus(403);
     }
 
-    public function test_webhook_pembayaran_dengan_pakai_deposit_menyelesaikan_semua(): void
+    public function test_webhook_pembayaran_dengan_pakai_deposit_hanya_menyelesaikan_tagihan_terpilih(): void
     {
-        [$pelanggan, $tagihan1] = $this->buatTagihan(1, 2026, 100000);
+        [$pelanggan, $tagihan1] = $this->buatTagihan(1, 2026, 150000);
         $tagihan2 = Tagihan::factory()->create([
             'layanan_internet_id' => $tagihan1->layanan_internet_id,
             'periode_bulan' => 2,
@@ -328,12 +328,20 @@ class DepositDanTunggakanTest extends TestCase
         );
 
         $this->assertSame(
-            StatusPembayaranEnum::SUDAH_BAYAR,
+            StatusPembayaranEnum::BELUM_BAYAR,
             $tagihan2->fresh()->status_pembayaran
         );
 
         $this->assertEquals(
-            100000,
+            50000,
+            (float) MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
+                ->where('jenis', 'pemakaian')
+                ->where('tagihan_id', $tagihan1->id)
+                ->sum('jumlah')
+        );
+
+        $this->assertEquals(
+            0,
             (float) MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
                 ->where('jenis', 'pemakaian')
                 ->where('tagihan_id', $tagihan2->id)
@@ -341,7 +349,7 @@ class DepositDanTunggakanTest extends TestCase
         );
 
         $this->assertEquals(
-            0,
+            50000,
             (float) MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
                 ->where('jenis', 'pemakaian')
                 ->where('tagihan_id', $tagihan1->id)

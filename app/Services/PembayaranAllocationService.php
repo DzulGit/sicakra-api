@@ -109,9 +109,10 @@ class PembayaranAllocationService
     }
 
     public function gunakanSaldoKredit(
-        Pelanggan $pelanggan
+        Pelanggan $pelanggan,
+        ?array $tagihanIds = null
     ): array {
-        return DB::transaction(function () use ($pelanggan) {
+        return DB::transaction(function () use ($pelanggan, $tagihanIds) {
             $pelanggan = Pelanggan::query()
                 ->lockForUpdate()
                 ->findOrFail($pelanggan->id);
@@ -138,7 +139,13 @@ class PembayaranAllocationService
                 ->where(
                     'status_pembayaran',
                     StatusPembayaranEnum::BELUM_BAYAR->value
-                )
+                );
+
+            if (is_array($tagihanIds) && count($tagihanIds) > 0) {
+                $tagihan->whereIn('id', $tagihanIds);
+            }
+
+            $tagihan = $tagihan
                 ->orderBy('periode_tahun')
                 ->orderBy('periode_bulan')
                 ->orderBy('id')
@@ -310,7 +317,7 @@ class PembayaranAllocationService
         Pembayaran $pembayaran,
         ?array $tagihanIds = null
     ): Pembayaran {
-        return DB::transaction(function () use ($pembayaran) {
+        return DB::transaction(function () use ($pembayaran, $tagihanIds) {
             $pembayaran = Pembayaran::query()
                 ->lockForUpdate()
                 ->findOrFail($pembayaran->id);
