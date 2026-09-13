@@ -35,8 +35,21 @@ class TagihanController extends Controller
     {
         $this->authorize('viewAny', Tagihan::class);
 
+        $data = $this->tagihanRepository->paginateSemua($filter);
+
+        $data->getCollection()->transform(function (Tagihan $item) {
+            $detail = $this->pembayaranAllocationService
+                ->detailTagihan($item);
+
+            foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $key) {
+                $item->setAttribute($key, $detail[$key]);
+            }
+
+            return $item;
+        });
+
         return response()->json([
-            'data' => $this->tagihanRepository->paginateSemua($filter),
+            'data' => $data,
         ]);
     }
 
@@ -46,7 +59,24 @@ class TagihanController extends Controller
 
         $tagihan = $this->tagihanRepository->find(
             $tagihan->id,
-            ['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran'],
+            ['layananInternet.paketInternet', 'layananInternet.pelanggan', 'alokasiPembayaran.pembayaran'],
+        );
+
+        $detail = $this->pembayaranAllocationService
+            ->detailTagihan($tagihan);
+
+        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $key) {
+            $tagihan->setAttribute($key, $detail[$key]);
+        }
+
+        $tagihan->setAttribute(
+            'riwayat_pembayaran',
+            $tagihan->alokasiPembayaran
+                ->sortByDesc('id')
+                ->map->pembayaran
+                ->filter()
+                ->values()
+                ->all()
         );
 
         return response()->json(['data' => $tagihan]);
@@ -378,16 +408,31 @@ class TagihanController extends Controller
 
         $validated = $request->validate([
             'jumlah_dibayar' => [
-                'required',
+                'nullable',
                 'numeric',
                 'gt:0',
+                'required_without:jumlah_bulan',
+            ],
+            'jumlah_bulan' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'max:12',
+                'required_without:jumlah_dibayar',
             ],
         ]);
 
-        $jumlahDibayar = round(
-            (float) $validated['jumlah_dibayar'],
-            2
-        );
+        if (isset($validated['jumlah_bulan'])) {
+            $jumlahDibayar = round(
+                (float) $tagihan->harga_snapshot * (int) $validated['jumlah_bulan'],
+                2
+            );
+        } else {
+            $jumlahDibayar = round(
+                (float) $validated['jumlah_dibayar'],
+                2
+            );
+        }
 
         if ($jumlahDibayar <= 0) {
             return response()->json([
@@ -404,6 +449,7 @@ class TagihanController extends Controller
                 [
                     'metode_pembayaran' => 'tunai',
                     'dibayar_oleh' => $admin->nama_lengkap,
+                    'tagihan_terpilih' => [(int) $tagihan->id],
                 ]
             );
 
@@ -455,6 +501,7 @@ class TagihanController extends Controller
             'metode_pembayaran' => 'xendit',
             'provider' => 'xendit',
             'jumlah_dibayar' => $sisaTagihan,
+            'tagihan_terpilih' => [(int) $tagihan->id],
             'status' => StatusTransaksiEnum::PENDING,
         ]);
 

@@ -456,4 +456,169 @@ class PembayaranAllocationServiceTest extends TestCase
             $tagihan->status_pembayaran
         );
     }
+
+    public function test_selesaikan_pembayaran_hanya_mengalokasikan_tagihan_terpilih(): void
+    {
+        [$pelanggan, $layanan] = $this->buatPelangganDenganLayanan();
+
+        $tagihan1 = $this->buatTagihan($layanan, 1, 2026, 100000);
+        $tagihan2 = $this->buatTagihan($layanan, 2, 2026, 100000);
+
+        $pembayaran = Pembayaran::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'jumlah_dibayar' => 100000,
+            'tagihan_terpilih' => [$tagihan2->id],
+            'status' => StatusTransaksiEnum::BERHASIL,
+        ]);
+
+        app(PembayaranAllocationService::class)->selesaikanPembayaran($pembayaran);
+
+        $this->assertEquals(
+            100000,
+            (float) PembayaranTagihan::where('pembayaran_id', $pembayaran->id)
+                ->where('tagihan_id', $tagihan2->id)
+                ->value('jumlah_dialokasikan')
+        );
+
+        $this->assertEquals(
+            0,
+            PembayaranTagihan::where('pembayaran_id', $pembayaran->id)
+                ->where('tagihan_id', $tagihan1->id)
+                ->count()
+        );
+
+        $tagihan1->refresh();
+        $tagihan2->refresh();
+
+        $this->assertEquals(
+            StatusPembayaranEnum::BELUM_BAYAR,
+            $tagihan1->status_pembayaran
+        );
+
+        $this->assertEquals(
+            StatusPembayaranEnum::SUDAH_BAYAR,
+            $tagihan2->status_pembayaran
+        );
+    }
+
+    public function test_ringkasan_tunggakan_menghitung_sisa_bukan_total(): void
+    {
+        [$pelanggan, $layanan] = $this->buatPelangganDenganLayanan();
+
+        $tagihan1 = $this->buatTagihan($layanan, 1, 2026, 100000);
+        $tagihan2 = $this->buatTagihan($layanan, 2, 2026, 200000);
+
+        $pembayaran = Pembayaran::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'jumlah_dibayar' => 40000,
+            'tagihan_terpilih' => [$tagihan1->id],
+            'status' => StatusTransaksiEnum::BERHASIL,
+        ]);
+
+        app(PembayaranAllocationService::class)->selesaikanPembayaran($pembayaran);
+
+        $ringkasan = app(PembayaranAllocationService::class)
+            ->ringkasanTunggakan($pelanggan);
+
+        $this->assertSame(2, $ringkasan['jumlah_tagihan']);
+        $this->assertSame(260000.0, $ringkasan['total_tunggakan']);
+
+        $detail = collect($ringkasan['tagihan'])->keyBy('id');
+
+        $this->assertSame(60000.0, $detail[$tagihan1->id]['sisa_tagihan']);
+        $this->assertSame(40000.0, $detail[$tagihan1->id]['sudah_dibayar']);
+        $this->assertSame(200000.0, $detail[$tagihan2->id]['sisa_tagihan']);
+    }
+
+    public function test_ringkasan_tunggakan_mengurangi_saldo_kredit_terpakai(): void
+    {
+        [$pelanggan, $layanan] = $this->buatPelangganDenganLayanan();
+
+        $tagihan = $this->buatTagihan($layanan, 1, 2026, 100000);
+
+        MutasiSaldoKredit::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => $tagihan->id,
+            'jenis' => 'pemakaian',
+            'jumlah' => 30000,
+            'keterangan' => 'Saldo deposit dipakai.',
+        ]);
+
+        $ringkasan = app(PembayaranAllocationService::class)
+            ->ringkasanTunggakan($pelanggan);
+
+        $this->assertSame(1, $ringkasan['jumlah_tagihan']);
+        $this->assertSame(70000.0, $ringkasan['total_tunggakan']);
+
+        $detail = $ringkasan['tagihan'][0];
+
+        $this->assertSame(30000.0, $detail['saldo_kredit_digunakan']);
+        $this->assertSame(70000.0, $detail['sisa_tagihan']);
+    }
+
+    public function test_gunakan_saldo_kredit_dan_selesaikan_pembayaran_bersama_tidak_double_apply(): void
+    {
+        [$pelanggan, $layanan] = $this->buatPelangganDenganLayanan();
+
+        $tagihan1 = $this->buatTagihan($layanan, 1, 2026, 100000);
+        $tagihan2 = $this->buatTagihan($layanan, 2, 2026, 100000);
+
+        MutasiSaldoKredit::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'jenis' => 'kredit',
+            'jumlah' => 50000,
+            'keterangan' => 'Kelebihan pembayaran.',
+        ]);
+
+        $service = app(PembayaranAllocationService::class);
+
+        $pembayaran = Pembayaran::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'jumlah_dibayar' => 100000,
+            'status' => StatusTransaksiEnum::BERHASIL,
+        ]);
+
+        $service->selesaikanPembayaran($pembayaran);
+        $service->gunakanSaldoKredit($pelanggan);
+
+        $tagihan1->refresh();
+        $tagihan2->refresh();
+
+        $this->assertEquals(
+            StatusPembayaranEnum::SUDAH_BAYAR,
+            $tagihan1->status_pembayaran
+        );
+
+        $this->assertEquals(
+            StatusPembayaranEnum::BELUM_BAYAR,
+            $tagihan2->status_pembayaran
+        );
+
+        $this->assertEquals(
+            50000,
+            (float) MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
+                ->where('jenis', 'kredit')
+                ->sum('jumlah')
+        );
+
+        $this->assertEquals(
+            50000,
+            (float) MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
+                ->where('jenis', 'pemakaian')
+                ->sum('jumlah')
+        );
+
+        $this->assertEquals(
+            50000.0,
+            app(PembayaranAllocationService::class)
+                ->hitungSisaTagihan($tagihan2)
+        );
+
+        $this->assertEquals(
+            0.0,
+            app(PembayaranAllocationService::class)
+                ->hitungSaldoKredit($pelanggan)
+        );
+    }
 }

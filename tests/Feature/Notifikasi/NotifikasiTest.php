@@ -3,10 +3,12 @@
 namespace Tests\Feature\Notifikasi;
 
 use App\Enums\PeranAdminEnum;
+use App\Enums\StatusTransaksiEnum;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
+use App\Models\Pembayaran;
 use App\Models\PermohonanLayanan;
 use App\Models\Tagihan;
 use App\Notifications\LaporanKendalaBaruNotification;
@@ -147,8 +149,21 @@ class NotifikasiTest extends TestCase
             'layanan_internet_id' => $layanan->id,
         ]);
 
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $pelanggan->id,
+            'metode_pembayaran' => 'BCA',
+            'provider' => 'xendit',
+            'jumlah_dibayar' => 150000,
+            'status' => StatusTransaksiEnum::PENDING,
+        ]);
+
+        $pembayaran->update([
+            'provider_external_id' => 'PAY-' . $pembayaran->id,
+        ]);
+
         $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+            'external_id' => 'PAY-' . $pembayaran->id,
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
             'paid_amount' => 150000,

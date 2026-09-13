@@ -27,11 +27,19 @@ class TagihanSayaController extends Controller
     {
         $this->authorize('viewAny', Tagihan::class);
 
+        $data = $this->tagihanRepository->paginateUntukPelanggan(
+            $request->user()->id,
+            $filter
+        );
+
+        $data->getCollection()->transform(function (Tagihan $item) {
+            $this->lengkapiDetailPembayaran($item);
+
+            return $item;
+        });
+
         return response()->json([
-            'data' => $this->tagihanRepository->paginateUntukPelanggan(
-                $request->user()->id,
-                $filter
-            ),
+            'data' => $data,
         ]);
     }
 
@@ -48,6 +56,9 @@ class TagihanSayaController extends Controller
                 'alokasiPembayaran.pembayaran',
             ],
         );
+
+        $this->lengkapiDetailPembayaran($tagihan);
+        $this->lengkapiRiwayatPembayaran($tagihan);
 
         return response()->json([
             'data' => $tagihan,
@@ -89,6 +100,10 @@ class TagihanSayaController extends Controller
                 'numeric',
                 'min:1',
             ],
+            'gunakan_deposit' => [
+                'sometimes',
+                'boolean',
+            ],
         ]);
 
         $jumlahDibayar = isset($validated['jumlah_dibayar'])
@@ -109,9 +124,17 @@ class TagihanSayaController extends Controller
             ], 422);
         }
 
+        /*
+         * Pembayaran per-tagihan hanya boleh menyelesaikan tagihan itu.
+         * Kelebihannya otomatis menjadi saldo kredit saat webhook berhasil.
+         */
+        $terpilih = [$tagihan->id];
+
         $pembayaran = DB::transaction(function () use (
             $pelanggan,
-            $jumlahDibayar
+            $jumlahDibayar,
+            $terpilih,
+            $validated
         ) {
             return Pembayaran::create([
                 'pelanggan_id' => $pelanggan->id,
@@ -119,6 +142,8 @@ class TagihanSayaController extends Controller
                 'metode_pembayaran' => 'xendit',
                 'provider' => 'xendit',
                 'jumlah_dibayar' => $jumlahDibayar,
+                'tagihan_terpilih' => $terpilih,
+                'pakai_saldo_kredit' => (bool) ($validated['gunakan_deposit'] ?? false),
                 'status' => StatusTransaksiEnum::PENDING,
             ]);
         });
@@ -160,7 +185,7 @@ class TagihanSayaController extends Controller
 
     public function bayarGabungan(
         Request $request,
-    ) {
+    ): JsonResponse {
         $pelanggan = $request->user();
 
         $validated = $request->validate([
@@ -168,6 +193,16 @@ class TagihanSayaController extends Controller
                 'required',
                 'numeric',
                 'min:1',
+            ],
+            'tagihan_ids' => [
+                'sometimes',
+                'array',
+                'min:1',
+            ],
+            'tagihan_ids.*' => ['integer'],
+            'gunakan_deposit' => [
+                'sometimes',
+                'boolean',
             ],
         ]);
 
@@ -184,12 +219,19 @@ class TagihanSayaController extends Controller
                     $pelanggan->id
                 )
             )
-            ->whereIn(
+            ->where(
                 'status_pembayaran',
-                [
-                    StatusPembayaranEnum::BELUM_BAYAR->value,
-                ]
-            )
+                StatusPembayaranEnum::BELUM_BAYAR->value
+            );
+
+        if (!empty($validated['tagihan_ids'])) {
+            $tagihan->whereIn(
+                'id',
+                array_map('intval', $validated['tagihan_ids'])
+            );
+        }
+
+        $tagihan = $tagihan
             ->orderBy('periode_tahun')
             ->orderBy('periode_bulan')
             ->orderBy('id')
@@ -207,7 +249,6 @@ class TagihanSayaController extends Controller
                     ->hitungSisaTagihan($itemTagihan)
         );
 
-
         $totalSisa = round($totalSisa, 2);
 
         if ($totalSisa <= 0) {
@@ -215,6 +256,11 @@ class TagihanSayaController extends Controller
                 'message' => 'Semua tagihan sudah lunas.',
             ], 422);
         }
+
+        $terpilih = $tagihan
+            ->pluck('id')
+            ->map(fn (int $id) => (int) $id)
+            ->all();
 
         /*
         * Pembayaran boleh melebihi total tagihan.
@@ -227,62 +273,129 @@ class TagihanSayaController extends Controller
             'metode_pembayaran' => 'xendit',
             'provider' => 'xendit',
             'jumlah_dibayar' => $jumlahDibayar,
+            'tagihan_terpilih' => $terpilih,
+            'pakai_saldo_kredit' => (bool) ($validated['gunakan_deposit'] ?? false),
             'status' => StatusTransaksiEnum::PENDING,
             'provider_status' => 'pending',
         ]);
 
         try {
-        $body = $this->xenditInvoiceService->buatInvoice(
-            $pembayaran,
-            durasiHari: 7
-        );
+            $body = $this->xenditInvoiceService->buatInvoice(
+                $pembayaran,
+                durasiHari: 7
+            );
 
-        $pembayaran->update([
-            'provider' => 'xendit',
-            'provider_reference' => $body['id'] ?? null,
-            'provider_external_id' => $body['external_id'] ?? null,
-            'payment_url' => $body['invoice_url'] ?? null,
-            'provider_status' => 'active',
-            'provider_expires_at' => $body['expiry_date'] ?? null,
-            'referensi_xendit' => $body['external_id'] ?? null,
-        ]);
-
-        return response()->json([
-            'message' => 'Invoice pembayaran gabungan berhasil dibuat.',
-            'data' => [
-                'pembayaran' => $pembayaran->fresh(),
-                'total_tagihan' => $totalSisa,
-                'jumlah_dibayar' => $jumlahDibayar,
-                'kelebihan' => max(
-                    0,
-                    round($jumlahDibayar - $totalSisa, 2)
-                ),
+            $pembayaran->update([
+                'provider' => 'xendit',
+                'provider_reference' => $body['id'] ?? null,
+                'provider_external_id' => $body['external_id'] ?? null,
                 'payment_url' => $body['invoice_url'] ?? null,
-            ],
-        ], 201);
-    } catch (\Throwable $e) {
-        $pembayaran->update([
-            'status' => StatusTransaksiEnum::GAGAL,
-            'provider_status' => 'failed',
-        ]);
+                'provider_status' => 'active',
+                'provider_expires_at' => $body['expiry_date'] ?? null,
+                'referensi_xendit' => $body['external_id'] ?? null,
+            ]);
 
-        throw $e;
+            return response()->json([
+                'message' => 'Invoice pembayaran gabungan berhasil dibuat.',
+                'data' => [
+                    'pembayaran' => $pembayaran->fresh(),
+                    'total_tagihan' => $totalSisa,
+                    'jumlah_dibayar' => $jumlahDibayar,
+                    'kelebihan' => max(
+                        0,
+                        round($jumlahDibayar - $totalSisa, 2)
+                    ),
+                    'payment_url' => $body['invoice_url'] ?? null,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            $pembayaran->update([
+                'status' => StatusTransaksiEnum::GAGAL,
+                'provider_status' => 'failed',
+            ]);
+
+            throw $e;
+        }
     }
 
+    /**
+     * Saldo deposit pelanggan + riwayat mutasi terakhir.
+     */
+    public function deposit(Request $request): JsonResponse
+    {
+        $pelanggan = $request->user();
+
         return response()->json([
-            'message' => 'Invoice pembayaran gabungan berhasil dibuat.',
             'data' => [
-                'pembayaran' => $pembayaran->fresh(),
-                'total_tagihan' => $totalSisa,
-                'jumlah_dibayar' => $jumlahDibayar,
-                'kelebihan' => max(
-                    0,
-                    round($jumlahDibayar - $totalSisa, 2)
+                'saldo_deposit' => round(
+                    $this->pembayaranAllocationService
+                        ->hitungSaldoKredit($pelanggan),
+                    2
                 ),
-                'payment_url' =>
-                    $body['invoice_url'] ?? null,
+                'mutasi' => $pelanggan
+                    ->mutasiSaldoKredit()
+                    ->latest('id')
+                    ->limit(20)
+                    ->get(),
             ],
-        ], 201);
+        ]);
+    }
+
+    /**
+     * Ringkasan tunggakan pelanggan berdasarkan sisa tagihan.
+     */
+    public function tunggakan(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->pembayaranAllocationService
+                ->ringkasanTunggakan($request->user()),
+        ]);
+    }
+
+    /**
+     * Menggunakan saldo deposit untuk melunasi tagihan yang
+     * menunggak (dari periode tertua).
+     */
+    public function gunakanDeposit(Request $request): JsonResponse
+    {
+        $pelanggan = $request->user();
+
+        $hasil = $this->pembayaranAllocationService
+            ->gunakanSaldoKredit($pelanggan);
+
+        return response()->json([
+            'message' => 'Saldo deposit berhasil digunakan.',
+            'data' => [
+                ...$hasil,
+                'saldo_deposit' => round(
+                    $this->pembayaranAllocationService
+                        ->hitungSaldoKredit($pelanggan),
+                    2
+                ),
+                'tunggakan' => $this->pembayaranAllocationService
+                    ->ringkasanTunggakan($pelanggan),
+            ],
+        ]);
+    }
+
+    /**
+     * Riwayat pembayaran pelanggan (semua status, termasuk
+     * PENDING yang masih punya payment_url aktif).
+     */
+    public function riwayatPembayaran(Request $request): JsonResponse
+    {
+        $data = Pembayaran::query()
+            ->where('pelanggan_id', $request->user()->id)
+            ->with([
+                'alokasiTagihan.tagihan',
+                'mutasiSaldoKredit',
+            ])
+            ->orderByDesc('id')
+            ->paginate(15);
+
+        return response()->json([
+            'data' => $data,
+        ]);
     }
 
     /**
@@ -323,6 +436,7 @@ class TagihanSayaController extends Controller
             'metode_pembayaran' => 'xendit',
             'provider' => 'xendit',
             'jumlah_dibayar' => $sisaTagihan,
+            'tagihan_terpilih' => [(int) $tagihan->id],
             'status' => StatusTransaksiEnum::PENDING,
         ]);
 
@@ -367,5 +481,40 @@ class TagihanSayaController extends Controller
     private function hitungSisaTagihan(Tagihan $tagihan): float
     {
         return $this->pembayaranAllocationService->hitungSisaTagihan($tagihan);
+    }
+
+    /**
+     * Menambahkan sisa_tagihan, sudah_dibayar, dan
+     * saldo_kredit_digunakan ke response tagihan.
+     */
+    private function lengkapiDetailPembayaran(Tagihan $tagihan): void
+    {
+        $detail = $this->pembayaranAllocationService
+            ->detailTagihan($tagihan);
+
+        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $key) {
+            $tagihan->setAttribute($key, $detail[$key]);
+        }
+    }
+
+    /**
+     * Menambahkan riwayat pembayaran berbasis alokasi
+     * (Pembayaran.tagihan_id kini nullable).
+     */
+    private function lengkapiRiwayatPembayaran(Tagihan $tagihan): void
+    {
+        if ($tagihan->relationLoaded('alokasiPembayaran')) {
+            $riwayat = $tagihan->alokasiPembayaran
+                ->sortByDesc('id')
+                ->map->pembayaran
+                ->filter()
+                ->values()
+                ->all();
+        } else {
+            $riwayat = $this->pembayaranAllocationService
+                ->riwayatPembayaranTagihan($tagihan);
+        }
+
+        $tagihan->setAttribute('riwayat_pembayaran', $riwayat);
     }
 }

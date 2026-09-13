@@ -68,6 +68,9 @@ class PembayaranAllocationService
 
                 'jumlah_dibayar' => $jumlahDibayar,
 
+                'tagihan_terpilih' =>
+                    $dataPembayaran['tagihan_terpilih'] ?? null,
+
                 'status' => StatusTransaksiEnum::BERHASIL,
 
                 'payload_webhook' =>
@@ -297,9 +300,14 @@ class PembayaranAllocationService
      * Idempotent:
      * kalau pembayaran sudah pernah dialokasikan, tidak akan
      * dialokasikan ulang.
+     *
+     * $tagihanIds opsional untuk memilih tagihan mana saja yang
+     * boleh dialokasikan. Kalau null, pakai pilihan yang tersimpan
+     * di pembayaran.tagihan_terpilih (alur "bayar gabungan").
      */
     public function selesaikanPembayaran(
-        Pembayaran $pembayaran
+        Pembayaran $pembayaran,
+        ?array $tagihanIds = null
     ): Pembayaran {
         return DB::transaction(function () use ($pembayaran) {
             $pembayaran = Pembayaran::query()
@@ -354,6 +362,8 @@ class PembayaranAllocationService
              * Ambil semua tagihan outstanding pelanggan,
              * dari periode paling lama ke paling baru.
              */
+            $tagihanIds = $tagihanIds ?? $pembayaran->tagihan_terpilih;
+
             $tagihan = Tagihan::query()
                 ->whereHas(
                     'layananInternet',
@@ -365,7 +375,13 @@ class PembayaranAllocationService
                 ->where(
                     'status_pembayaran',
                     StatusPembayaranEnum::BELUM_BAYAR->value
-                )
+                );
+
+            if (is_array($tagihanIds) && count($tagihanIds) > 0) {
+                $tagihan->whereIn('id', $tagihanIds);
+            }
+
+            $tagihan = $tagihan
                 ->orderBy('periode_tahun')
                 ->orderBy('periode_bulan')
                 ->orderBy('id')
@@ -518,6 +534,27 @@ class PembayaranAllocationService
         ]);
     }
 
+    /**
+     * Riwayat pembayaran yang menyentuh sebuah tagihan, diambil dari
+     * alokasi (pembayaran_tagihan) karena Pembayaran.tagihan_id kini
+     * nullable (satu pembayaran bisa melayani banyak tagihan).
+     *
+     * @return Pembayaran[]
+     */
+    public function riwayatPembayaranTagihan(Tagihan $tagihan): array
+    {
+        return $tagihan->alokasiPembayaran()
+            ->with('pembayaran')
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (PembayaranTagihan $alokasi) {
+                return $alokasi->pembayaran;
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     public function hitungSisaTagihan(Tagihan $tagihan): float
     {
         $sudahDibayar = $this->hitungTotalPembayaranBerhasil(
@@ -537,5 +574,92 @@ class PembayaranAllocationService
             ),
             2
         );
+    }
+
+    /**
+     * Detail keterangan pembayaran sebuah tagihan (sisa, sudah
+     * dibayar, saldo kredit terpakai). Sumber tunggal perhitungan
+     * agar semua endpoint konsisten.
+     */
+    public function detailTagihan(Tagihan $tagihan): array
+    {
+        $sudahDibayar = $this->hitungTotalPembayaranBerhasil(
+            $tagihan
+        );
+
+        $sudahDipakaiKredit = $this->hitungTotalPemakaianKredit(
+            $tagihan
+        );
+
+        $totalTagihan = (float) $tagihan->total_tagihan;
+
+        return [
+            'id' => $tagihan->id,
+            'nomor_tagihan' => $tagihan->nomor_tagihan,
+            'periode_bulan' => $tagihan->periode_bulan,
+            'periode_tahun' => $tagihan->periode_tahun,
+            'total_tagihan' => round($totalTagihan, 2),
+            'jumlah_bulan' => $tagihan->jumlah_bulan,
+            'sudah_dibayar' => round($sudahDibayar, 2),
+            'saldo_kredit_digunakan' => round(
+                $sudahDipakaiKredit,
+                2
+            ),
+            'sisa_tagihan' => round(
+                max(
+                    0,
+                    $totalTagihan
+                        - $sudahDibayar
+                        - $sudahDipakaiKredit
+                ),
+                2
+            ),
+            'status_pembayaran' => $tagihan->status_pembayaran->value,
+            'dibayar_pada' => $tagihan->dibayar_pada?->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * Ringkasan tunggakan pelanggan: sisa tagihan (bukan total
+     * tagihan) dari semua tagihan BELUM_BAYAR yang masih punya sisa.
+     */
+    public function ringkasanTunggakan(Pelanggan $pelanggan): array
+    {
+        $tagihan = Tagihan::query()
+            ->whereHas(
+                'layananInternet',
+                fn ($query) => $query->where(
+                    'pelanggan_id',
+                    $pelanggan->id
+                )
+            )
+            ->where(
+                'status_pembayaran',
+                StatusPembayaranEnum::BELUM_BAYAR->value
+            )
+            ->orderBy('periode_tahun')
+            ->orderBy('periode_bulan')
+            ->orderBy('id')
+            ->get();
+
+        $total = 0;
+        $detail = [];
+
+        foreach ($tagihan as $item) {
+            $data = $this->detailTagihan($item);
+
+            if ($data['sisa_tagihan'] <= 0) {
+                continue;
+            }
+
+            $total += $data['sisa_tagihan'];
+            $detail[] = $data;
+        }
+
+        return [
+            'total_tunggakan' => round($total, 2),
+            'jumlah_tagihan' => count($detail),
+            'tagihan' => $detail,
+        ];
     }
 }

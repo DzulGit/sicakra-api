@@ -213,6 +213,25 @@ class XenditWebhookController extends Controller
             $pembayaran = $this->pembayaranAllocationService
                 ->selesaikanPembayaran($pembayaran);
 
+            /*
+            * Kalau pelanggan memilih "gunakan deposit" saat
+            * membuat pembayaran, sapu saldo deposit ke tagihan
+            * outstanding setelah allocation.
+            *
+            * Masih dalam transaction yang sama sehingga atomic
+            * dan tidak mungkin double-deduction (webhook ulang
+            * sudah tertahan oleh guard status BERHASIL di atas).
+            */
+            if (
+                $pembayaran->pakai_saldo_kredit
+                && $pembayaran->pelanggan_id
+            ) {
+                $this->pembayaranAllocationService
+                    ->gunakanSaldoKredit(
+                        $pembayaran->pelanggan
+                    );
+            }
+
             return [
                 'pembayaran' => $pembayaran,
                 'baru_berhasil' => true,

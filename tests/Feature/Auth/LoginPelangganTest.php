@@ -42,7 +42,7 @@ class LoginPelangganTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_pelanggan_wajib_buat_password_sebelum_akses_dashboard(): void
+    public function test_pelanggan_bisa_akses_profil_sebelum_buat_password(): void
     {
         $pelanggan = Pelanggan::factory()->create([
             'nomor_pelanggan' => 'PLG000003',
@@ -54,7 +54,11 @@ class LoginPelangganTest extends TestCase
         $response = $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson('/api/pelanggan/profil');
 
-        $response->assertStatus(403);
+        /*
+         * Alur login-pertama menjadi tidak wajib: middleware
+         * pastikan.password sekarang passthrough (no-op).
+         */
+        $response->assertStatus(200);
     }
 
     public function test_pelanggan_bisa_buat_password_lalu_akses_dashboard(): void

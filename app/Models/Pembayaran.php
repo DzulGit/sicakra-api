@@ -28,6 +28,8 @@ class Pembayaran extends Model
         'provider_status',
         'provider_expires_at',
         'dibayar_oleh',
+        'pakai_saldo_kredit',
+        'tagihan_terpilih',
         'jumlah_dibayar',
         'referensi_xendit',
         'status',
@@ -38,6 +40,8 @@ class Pembayaran extends Model
     protected $casts = [
         'status' => StatusTransaksiEnum::class,
         'payload_webhook' => 'array',
+        'pakai_saldo_kredit' => 'boolean',
+        'tagihan_terpilih' => 'array',
         'jumlah_dibayar' => 'decimal:2',
         'provider_expires_at' => 'datetime',
         'dibayar_pada' => 'datetime',

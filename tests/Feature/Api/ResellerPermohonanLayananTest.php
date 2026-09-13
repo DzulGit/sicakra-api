@@ -177,53 +177,74 @@ class ResellerPermohonanLayananTest extends TestCase
         $this->assertDatabaseHas('notifications', ['notifiable_id' => $pelanggan->id]);
     }
 
-    public function test_reseller_verifikasi_dan_jadwalkan_tanpa_teknisi(): void
+    public function test_reseller_menerima_permohonan_langsung_menerapkan_perubahan(): void
     {
         $reseller = $this->buatReseller();
         $pelanggan = Pelanggan::factory()->create(['reseller_id' => $reseller->id]);
-        $permohonan = PermohonanLayanan::factory()->create(['pelanggan_id' => $pelanggan->id]);
+        $paket = PaketInternet::factory()->create(['reseller_id' => $reseller->id]);
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'paket_internet_id' => $paket->id,
+            'tipe_paket' => TipePaketEnum::REGULER,
+        ]);
+
+        $permohonan = PermohonanLayanan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'pelanggan_id' => $pelanggan->id,
+            'jenis_permohonan' => JenisPermohonanEnum::RELOKASI,
+            'status' => StatusPermohonanEnum::MENUNGGU_VERIFIKASI,
+            'alamat_pemasangan' => 'Jl. Rumah Baru No. 99',
+        ]);
 
         $this->withHeader('Authorization', "Bearer {$this->tokenAdmin($reseller)}")
-            ->postJson("/api/reseller/permohonan-layanan/{$permohonan->id}/verifikasi-dan-jadwalkan", [
+            ->patchJson("/api/reseller/permohonan-layanan/{$permohonan->id}/verifikasi", [
                 'status' => 'DITERIMA',
-                'tanggal_kerja' => now()->addDays(2)->toDateString(),
             ])
-            ->assertCreated()
-            ->assertJsonPath('data.permohonan.status', StatusPermohonanEnum::DIJADWALKAN->value);
+            ->assertOk()
+            ->assertJsonPath('data.status', StatusPermohonanEnum::DIKONVERSI->value);
 
-        $this->assertDatabaseHas('jadwal_kerja', [
-            'permohonan_layanan_id' => $permohonan->id,
-            'tanggal_kerja' => now()->addDays(2)->format('Y-m-d 00:00:00'),
-        ]);
-        $this->assertDatabaseHas('permohonan_layanan', [
-            'id' => $permohonan->id,
-            'status' => StatusPermohonanEnum::DIJADWALKAN->value,
-        ]);
+        // Perubahan langsung diterapkan tanpa perlu jadwal teknisi.
+        $this->assertEquals(
+            'Jl. Rumah Baru No. 99',
+            $layanan->fresh()->alamat_pemasangan
+        );
+
+        $this->assertSame(
+            0,
+            JadwalKerja::where('permohonan_layanan_id', $permohonan->id)->count()
+        );
     }
 
-    public function test_reseller_jadwalkan_ulang_setelah_ditunda(): void
+    public function test_reseller_yang_menolak_permohonan_tidak_mengubah_layanan(): void
     {
         $reseller = $this->buatReseller();
         $pelanggan = Pelanggan::factory()->create(['reseller_id' => $reseller->id]);
-        $permohonan = PermohonanLayanan::factory()->create([
+        $paket = PaketInternet::factory()->create(['reseller_id' => $reseller->id]);
+        $layanan = LayananInternet::factory()->create([
             'pelanggan_id' => $pelanggan->id,
-            'status' => StatusPermohonanEnum::DITUNDA,
+            'paket_internet_id' => $paket->id,
+            'tipe_paket' => TipePaketEnum::REGULER,
+        ]);
+
+        $permohonan = PermohonanLayanan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'pelanggan_id' => $pelanggan->id,
+            'jenis_permohonan' => JenisPermohonanEnum::RELOKASI,
+            'status' => StatusPermohonanEnum::MENUNGGU_VERIFIKASI,
+            'alamat_pemasangan' => 'Jl. Rumah Baru No. 7',
         ]);
 
         $this->withHeader('Authorization', "Bearer {$this->tokenAdmin($reseller)}")
-            ->postJson("/api/reseller/permohonan-layanan/{$permohonan->id}/jadwalkan-kerja", [
-                'tanggal_kerja' => now()->addDays(3)->toDateString(),
+            ->patchJson("/api/reseller/permohonan-layanan/{$permohonan->id}/verifikasi", [
+                'status' => 'DITOLAK',
+                'catatan' => 'Alamat tidak ditemukan.',
             ])
-            ->assertCreated();
+            ->assertOk()
+            ->assertJsonPath('data.status', StatusPermohonanEnum::DITOLAK->value);
 
-        $this->assertDatabaseHas('jadwal_kerja', [
-            'permohonan_layanan_id' => $permohonan->id,
-            'tanggal_kerja' => now()->addDays(3)->format('Y-m-d 00:00:00'),
-        ]);
-        $this->assertDatabaseHas('permohonan_layanan', [
-            'id' => $permohonan->id,
-            'status' => StatusPermohonanEnum::DIJADWALKAN->value,
-        ]);
-        $this->assertSame(0, JadwalKerja::where('permohonan_layanan_id', $permohonan->id)->first()->teknisi()->count());
+        $this->assertNotEquals(
+            'Jl. Rumah Baru No. 7',
+            $layanan->fresh()->alamat_pemasangan
+        );
     }
 }

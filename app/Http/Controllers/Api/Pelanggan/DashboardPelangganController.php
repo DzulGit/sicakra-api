@@ -7,10 +7,15 @@ use App\Models\LaporanKendala;
 use App\Models\LayananInternet;
 use App\Models\PermohonanLayanan;
 use App\Models\Tagihan;
+use App\Services\PembayaranAllocationService;
 use Illuminate\Http\Request;
 
 class DashboardPelangganController extends Controller
 {
+    public function __construct(
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
+    ) {}
+
     public function ringkasan(Request $request)
     {
         $pelangganId = $request->user()->id;
@@ -40,8 +45,20 @@ class DashboardPelangganController extends Controller
             ->get();
 
         $tagihanBelumBayar = $tagihan->filter(fn ($t) => $t->status_pembayaran->value === 'belum_bayar');
-        $totalTagihanBelumBayar = $tagihanBelumBayar->sum(fn ($t) => (float) ($t->total_tagihan ?? 0));
         $kendalaAktif = $kendala->count();
+
+        /*
+         * Tunggakan dihitung dari sisa tagihan (bukan total),
+         * mencakup seluruh tagihan outstanding, bukan hanya 5 terbaru.
+         */
+        $tunggakan = $this->pembayaranAllocationService
+            ->ringkasanTunggakan($request->user());
+
+        $saldoDeposit = round(
+            $this->pembayaranAllocationService
+                ->hitungSaldoKredit($request->user()),
+            2
+        );
 
         return response()->json([
             'data' => [
@@ -52,8 +69,11 @@ class DashboardPelangganController extends Controller
                 'ringkasan' => [
                     'total_layanan' => $layanan->count(),
                     'layanan_aktif' => $layanan->filter(fn ($l) => $l->status === 'aktif')->count(),
-                    'tagihan_belum_bayar' => $tagihanBelumBayar->count(),
-                    'total_tagihan_belum_bayar' => $totalTagihanBelumBayar,
+                    'tagihan_belum_bayar' => $tunggakan['jumlah_tagihan'],
+                    'total_tagihan_belum_bayar' => $tunggakan['total_tunggakan'],
+                    'jumlah_tagihan_menunggak' => $tunggakan['jumlah_tagihan'],
+                    'total_tunggakan' => $tunggakan['total_tunggakan'],
+                    'saldo_deposit' => $saldoDeposit,
                     'kendala_aktif' => $kendalaAktif,
                     'permohonan_pending' => $permohonanPending->count(),
                 ],
@@ -70,6 +90,8 @@ class DashboardPelangganController extends Controller
                     'id' => $t->id,
                     'nomor_tagihan' => $t->nomor_tagihan,
                     'total' => (float) ($t->total_tagihan ?? 0),
+                    'sisa' => $this->pembayaranAllocationService
+                        ->hitungSisaTagihan($t),
                     'status_pembayaran' => $t->status_pembayaran->value,
                     'layanan' => $t->layananInternet?->paketInternet?->nama_paket ?? '-',
                 ]),

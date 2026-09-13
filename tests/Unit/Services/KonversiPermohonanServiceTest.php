@@ -6,9 +6,11 @@ use App\Enums\JenisPermohonanEnum;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPermohonanEnum;
 use App\Models\LayananInternet;
+use App\Models\PaketInternet;
 use App\Models\PermohonanLayanan;
 use App\Models\Tagihan;
 use App\Services\KonversiPermohonanService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -23,6 +25,13 @@ class KonversiPermohonanServiceTest extends TestCase
         // Faktikan event supaya listener queued (BuatInvoiceXendit) tidak
         // benar-benar memanggil API Xendit selama test.
         Event::fake();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_konversi_pemasangan_baru_membuat_layanan_internet_baru(): void
@@ -80,9 +89,14 @@ class KonversiPermohonanServiceTest extends TestCase
         );
     }
 
-    public function test_konversi_pemasangan_baru_paket_tanpa_promo_langsung_ditagih_bulan_ini(): void
+    public function test_konversi_pemasangan_baru_paket_tanpa_promo_menyiapkan_jadwal_penagihan(): void
     {
-        $paket = \App\Models\PaketInternet::factory()->create(['promo_gratis_bulan' => 0]);
+        Carbon::setTestNow(Carbon::create(2026, 9, 13, 10, 0, 0));
+
+        $paket = PaketInternet::factory()->create([
+            'promo_gratis_bulan' => 0,
+            'harga' => 150000,
+        ]);
 
         $permohonan = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
@@ -94,21 +108,24 @@ class KonversiPermohonanServiceTest extends TestCase
         $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
 
         $this->assertEquals(0, $layanan->bebas_tagihan_bulan);
-        $this->assertSame(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
 
-        $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->first();
-        $this->assertEquals(now()->month, $tagihan->periode_bulan);
-        $this->assertEquals(now()->year, $tagihan->periode_tahun);
+        /*
+         * Dengan Jadwal Penagihan Siklus Bulanan, tagihan tidak
+         * dibuat saat konversi. Tagihan dibuat ketika
+         * tanggal_mulai_penagihan tiba (cron SiklusPenagihanService).
+         */
+        $this->assertSame(0, Tagihan::where('layanan_internet_id', $layanan->id)->count());
 
-        // Sekali tagihan bulan ini dibuat, jadwal berikutnya maju 1 bulan.
-        $this->assertEquals(
-            now()->startOfDay()->addMonthsNoOverflow(1)->toDateString(),
-            $layanan->tanggal_mulai_penagihan->toDateString(),
+        $this->assertTrue(
+            Carbon::parse($layanan->tanggal_mulai_penagihan)->greaterThanOrEqualTo(Carbon::today()),
+            'Tanggal mulai penagihan harus diatur ke hari ini atau setelahnya.',
         );
     }
 
-    public function test_konversi_pemasangan_baru_langsung_generate_tagihan_bulan_ini(): void
+    public function test_konversi_pemasangan_baru_menyiapkan_jadwal_tagihan_pertama(): void
     {
+        Carbon::setTestNow(Carbon::create(2026, 9, 13, 10, 0, 0));
+
         $permohonan = PermohonanLayanan::factory()->create([
             'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
             'status' => StatusPermohonanEnum::DIJADWALKAN,
@@ -116,13 +133,12 @@ class KonversiPermohonanServiceTest extends TestCase
 
         $layanan = app(KonversiPermohonanService::class)->konversi($permohonan);
 
-        $this->assertEquals(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
+        $this->assertSame(0, Tagihan::where('layanan_internet_id', $layanan->id)->count());
 
-        $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->first();
-        $this->assertEquals(now()->month, $tagihan->periode_bulan);
-        $this->assertEquals(now()->year, $tagihan->periode_tahun);
-        $this->assertEquals($layanan->paketInternet->harga, $tagihan->harga_snapshot);
-        $this->assertEquals($layanan->paketInternet->harga, $tagihan->total_tagihan);
+        $this->assertTrue(
+            Carbon::parse($layanan->tanggal_mulai_penagihan)->greaterThanOrEqualTo(Carbon::today()),
+            'Tanggal mulai penagihan harus diatur ke hari ini atau setelahnya.',
+        );
     }
 
     public function test_konversi_pemasangan_baru_tidak_generate_ulang_nomor_pelanggan_jika_sudah_ada(): void

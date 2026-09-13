@@ -253,9 +253,14 @@ Route::prefix('pelanggan')->group(function () {
             'tagihan/bayar-gabungan',
             [TagihanSayaController::class, 'bayarGabungan']
         );
+        Route::get('tagihan/tunggakan', [TagihanSayaController::class, 'tunggakan']);
         Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
         Route::post('tagihan/{tagihan}/bayar', [TagihanSayaController::class, 'bayar']);
         Route::post('tagihan/{tagihan}/regenerate-invoice', [TagihanSayaController::class, 'regenerateInvoice']);
+
+        Route::get('deposit', [TagihanSayaController::class, 'deposit']);
+        Route::post('deposit/gunakan', [TagihanSayaController::class, 'gunakanDeposit']);
+        Route::get('pembayaran', [TagihanSayaController::class, 'riwayatPembayaran']);
 
         Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
         Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);

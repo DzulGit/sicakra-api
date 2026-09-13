@@ -7,10 +7,15 @@ use App\Enums\StatusTransaksiEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Pembayaran;
 use App\Models\Tagihan;
+use App\Services\PembayaranAllocationService;
 use Carbon\Carbon;
 
 class DashboardKeuanganController extends Controller
 {
+    public function __construct(
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
+    ) {}
+
     public function index()
     {
         $hariIni = now()->startOfDay();
@@ -76,15 +81,26 @@ class DashboardKeuanganController extends Controller
             ->whereYear('dibayar_pada', now()->year)
             ->sum('jumlah_dibayar');
 
+        /*
+         * Nilai tunggakan = sisa tagihan (bukan total_tagihan),
+         * karena pembayaran bisa parsial / pakai saldo deposit.
+         */
+        $totalTertunggak = (clone $tertunggak)
+            ->get()
+            ->reduce(
+                fn (float $total, Tagihan $item) =>
+                    $total + $this->pembayaranAllocationService
+                        ->hitungSisaTagihan($item),
+                0
+            );
+
         $stats = [
             'pembayaran_hari_ini' => (clone $pembayaranHariIni)->count(),
             'total_pembayaran_hari_ini' => $this->rupiah(
                 (clone $pembayaranHariIni)->sum('jumlah_dibayar')
             ),
             'tagihan_tertunggak' => (clone $tertunggak)->count(),
-            'total_tertunggak' => $this->rupiah(
-                (clone $tertunggak)->sum('total_tagihan')
-            ),
+            'total_tertunggak' => $this->rupiah($totalTertunggak),
             'jatuh_tempo_minggu_ini' => (clone $jatuhTempoMingguIni)->count(),
             'pendapatan_bulan_ini' => $this->rupiah($pendapatanBulanIni),
         ];
