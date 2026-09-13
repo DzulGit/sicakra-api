@@ -2,40 +2,103 @@
 
 namespace App\Services;
 
-use App\Models\Tagihan;
+use App\Models\Pembayaran;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
-/**
- * Buat invoice Xendit untuk sebuah tagihan. Dipakai baik oleh listener
- * async (auto/massal) maupun oleh endpoint regenerate (sinkron, supaya URL
- * baru bisa langsung dikembalikan ke pelanggan). `$durasiHari` opsional:
- * default dari config, khusus perbarui-link admin dipakai 7 hari.
- */
 class XenditInvoiceService
 {
-    public function buatInvoice(Tagihan $tagihan, ?int $durasiHari = null): array
-    {
-        $tagihan = $tagihan->fresh(['layananInternet.pelanggan']);
-        $pelanggan = $tagihan->layananInternet->pelanggan;
+    /**
+     * Membuat invoice Xendit untuk sebuah transaksi pembayaran.
+     *
+     * Satu pembayaran dapat digunakan untuk membayar beberapa tagihan,
+     * sehingga invoice Xendit tidak lagi dibuat berdasarkan Tagihan.
+     */
+    public function buatInvoice(
+        Pembayaran $pembayaran,
+        ?int $durasiHari = null
+    ): array {
+        $pembayaran = $pembayaran->fresh([
+            'pelanggan',
+        ]);
+
+        if (!$pembayaran) {
+            throw new RuntimeException(
+                'Pembayaran tidak ditemukan.'
+            );
+        }
+
+        if (!$pembayaran->pelanggan_id) {
+            throw new RuntimeException(
+                'Pembayaran tidak memiliki pelanggan.'
+            );
+        }
+
+        $pelanggan = $pembayaran->pelanggan;
+
+        if (!$pelanggan) {
+            throw new RuntimeException(
+                'Pelanggan pembayaran tidak ditemukan.'
+            );
+        }
+
+        $jumlah = (float) $pembayaran->jumlah_dibayar;
+
+        if ($jumlah <= 0) {
+            throw new RuntimeException(
+                'Jumlah pembayaran harus lebih besar dari 0.'
+            );
+        }
+
+        /*
+         * Satu Pembayaran = satu invoice Xendit.
+         *
+         * External ID dibuat berdasarkan ID pembayaran agar:
+         * - unik
+         * - mudah dilacak dari webhook
+         * - tidak bergantung pada nomor tagihan
+         */
+        $externalId = $this->buatExternalId($pembayaran);
 
         $payload = [
-            'external_id' => $this->buatExternalId($tagihan),
-            'amount' => (float) $tagihan->total_tagihan,
-            'description' => $this->buatDeskripsi($tagihan),
+            'external_id' => $externalId,
+
+            'amount' => $jumlah,
+
+            'description' => $this->buatDeskripsi($pembayaran),
+
             'currency' => 'IDR',
+
             'invoice_duration' => $durasiHari
                 ? $durasiHari * 86400
-                : config('services.xendit.invoice_duration', 864000),
-            'payment_methods' => ['QRIS', 'BCA', 'MANDIRI', 'BRI', 'ALFAMART', 'INDOMARET'],
-            'metadata' => [
-                'tagihan_id' => $tagihan->id,
-                'nomor_tagihan' => $tagihan->nomor_tagihan,
-                'jumlah_bulan' => $tagihan->jumlah_bulan,
+                : config(
+                    'services.xendit.invoice_duration',
+                    864000
+                ),
+
+            'payment_methods' => [
+                'QRIS',
+                'BCA',
+                'MANDIRI',
+                'BRI',
+                'ALFAMART',
+                'INDOMARET',
             ],
+
+            'metadata' => [
+                'pembayaran_id' => $pembayaran->id,
+                'pelanggan_id' => $pelanggan->id,
+                'jumlah_dibayar' => $jumlah,
+            ],
+
             'customer' => [
-                'given_names' => $pelanggan->nama_lengkap ?? $pelanggan->nomor_pelanggan,
-                'mobile_number' => $pelanggan->nomor_hp,
+                'given_names' =>
+                    $pelanggan->nama_lengkap
+                    ?? $pelanggan->nomor_pelanggan,
+
+                'mobile_number' =>
+                    $pelanggan->nomor_hp,
             ],
         ];
 
@@ -43,45 +106,89 @@ class XenditInvoiceService
             $payload['customer']['email'] = $pelanggan->email;
         }
 
-        $response = Http::withBasicAuth(config('services.xendit.secret_key'), '')
+        $response = Http::withBasicAuth(
+            config('services.xendit.secret_key'),
+            ''
+        )
             ->timeout(30)
-            ->post('https://api.xendit.co/v2/invoices', $payload);
+            ->post(
+                'https://api.xendit.co/v2/invoices',
+                $payload
+            );
 
         if ($response->failed()) {
-            Log::error('Xendit invoice creation failed', [
-                'tagihan_id' => $tagihan->id,
-                'response' => $response->body(),
-            ]);
+            Log::error(
+                'Xendit invoice creation failed',
+                [
+                    'pembayaran_id' => $pembayaran->id,
+                    'pelanggan_id' => $pelanggan->id,
+                    'amount' => $jumlah,
+                    'response' => $response->body(),
+                ]
+            );
+
             $response->throw();
         }
 
-        return $response->json();
+        $body = $response->json();
+
+        if (!is_array($body) || empty($body['id'])) {
+            Log::error(
+                'Xendit returned invalid invoice response',
+                [
+                    'pembayaran_id' => $pembayaran->id,
+                    'response' => $body,
+                ]
+            );
+
+            throw new RuntimeException(
+                'Response invoice Xendit tidak valid.'
+            );
+        }
+
+        return $body;
     }
 
     /**
-     * external_id dipakai untuk trace di sisi Xendit. Retry pertama (retry_count=0)
-     * tanpa suffix; regenerate berikutnya diberi suffix -N agar tidak duplikat &
-     * unik. Webhook men-strip suffix ini sebelum lookup nomor tagihan.
+     * External ID untuk Xendit.
+     *
+     * Contoh:
+     * PAY-123
+     *
+     * ID pembayaran dipakai sebagai sumber identitas utama,
+     * bukan nomor tagihan.
      */
-    public function buatExternalId(Tagihan $tagihan): string
-    {
-        $retry = max(0, (int) $tagihan->xendit_invoice_retry_count);
-        $suffix = $retry > 0 ? '-'.$retry : '';
-
-        return 'TGH-'.$tagihan->nomor_tagihan.$suffix;
+    public function buatExternalId(
+        Pembayaran $pembayaran
+    ): string {
+        return 'PAY-' . $pembayaran->id;
     }
 
-    private function buatDeskripsi(Tagihan $tagihan): string
-    {
-        $periode = $tagihan->periode_bulan.'/'.$tagihan->periode_tahun;
-        $paket = $tagihan->nama_paket_snapshot;
+    /**
+     * Deskripsi invoice Xendit.
+     *
+     * Karena pembayaran belum dialokasikan ketika invoice dibuat,
+     * deskripsi dibuat berdasarkan pelanggan dan nominal pembayaran.
+     */
+    private function buatDeskripsi(
+        Pembayaran $pembayaran
+    ): string {
+        $pelanggan = $pembayaran->pelanggan;
 
-        $label = "Pembayaran {$paket} - Periode {$periode}";
+        $namaPelanggan =
+            $pelanggan?->nama_lengkap
+            ?? $pelanggan?->nomor_pelanggan
+            ?? 'Pelanggan';
 
-        if ($tagihan->jumlah_bulan > 1) {
-            $label .= " ({$tagihan->jumlah_bulan} bulan)";
-        }
-
-        return $label;
+        return sprintf(
+            'Pembayaran tagihan %s - Rp%s',
+            $namaPelanggan,
+            number_format(
+                (float) $pembayaran->jumlah_dibayar,
+                0,
+                ',',
+                '.'
+            )
+        );
     }
 }

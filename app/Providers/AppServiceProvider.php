@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Events\PembayaranBerhasil;
 use App\Events\TagihanDibuat;
-use App\Listeners\BuatInvoiceXendit;
 use App\Listeners\KirimNotifikasiPembayaranAdmin;
 use App\Listeners\KirimNotifikasiTagihanDibuat;
 use App\Listeners\KirimNotifikasiTagihanLunas;
@@ -97,11 +96,6 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('pendaftaran', function (Request $request) {
             return Limit::perMinute(3)->by($request->ip());
         });
-
-        Event::listen(
-            TagihanDibuat::class,
-            BuatInvoiceXendit::class,
-        );
 
         Event::listen(
             TagihanDibuat::class,

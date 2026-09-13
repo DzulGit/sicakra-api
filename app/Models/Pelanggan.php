@@ -58,6 +58,14 @@ class Pelanggan extends Authenticatable
         return $this->hasMany(LayananInternet::class, 'pelanggan_id');
     }
 
+    public function mutasiSaldoKredit(): HasMany
+    {
+        return $this->hasMany(
+            MutasiSaldoKredit::class,
+            'pelanggan_id'
+        );
+    }
+
     public function reseller()
     {
         return $this->belongsTo(Admin::class, 'reseller_id');

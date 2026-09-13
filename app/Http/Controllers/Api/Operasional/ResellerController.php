@@ -14,6 +14,7 @@ use App\Models\Admin;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\AdminRepositoryInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -187,7 +188,7 @@ class ResellerController extends Controller
         }
 
         $id = $reseller->id;
-        $pendapatan = $this->queryPembayaran([$id])->sum('jumlah_dibayar');
+        $pendapatan = $this->queryAlokasiPembayaran([$id])->sum('pembayaran_tagihan.jumlah_dialokasikan');
 
         $distribusiStatus = $this->queryTagihan([$id])
             ->selectRaw('status_pembayaran, count(*) as jumlah')
@@ -274,11 +275,38 @@ class ResellerController extends Controller
         );
     }
 
-    /** Pembayaran BERHASIL milik pelanggan reseller. */
+    /**
+     * Pembayaran BERHASIL milik pelanggan reseller.
+     */
     private function queryPembayaran(iterable $idList): Builder
     {
-        return Pembayaran::where('pembayaran.status', StatusTransaksiEnum::BERHASIL)
-            ->whereHas('tagihan.layananInternet.pelanggan', fn (Builder $q) => $q->whereIn('reseller_id', is_array($idList) ? $idList : $idList->all()));
+        $ids = is_array($idList) ? $idList : $idList->all();
+
+        return Pembayaran::query()
+            ->where('pembayaran.status', StatusTransaksiEnum::BERHASIL)
+            ->whereHas('pelanggan', function (Builder $q) use ($ids) {
+                $q->whereIn('reseller_id', $ids);
+            });
+    }
+
+    /**
+     * Alokasi pembayaran BERHASIL ke tagihan milik reseller.
+     *
+     * Sumber omzet reseller adalah jumlah yang benar-benar dialokasikan
+     * ke tagihan reseller, bukan total pembayaran customer.
+     */
+    private function queryAlokasiPembayaran(iterable $idList): Builder
+    {
+        $ids = is_array($idList) ? $idList : $idList->all();
+
+        return PembayaranTagihan::query()
+            ->join('pembayaran', 'pembayaran_tagihan.pembayaran_id', '=', 'pembayaran.id')
+            ->join('tagihan', 'pembayaran_tagihan.tagihan_id', '=', 'tagihan.id')
+            ->join('layanan_internet', 'tagihan.layanan_internet_id', '=', 'layanan_internet.id')
+            ->join('pelanggan', 'layanan_internet.pelanggan_id', '=', 'pelanggan.id')
+            ->where('pembayaran.status', StatusTransaksiEnum::BERHASIL)
+            ->whereIn('pelanggan.reseller_id', $ids)
+            ->whereNotNull('pembayaran.dibayar_pada');
     }
 
     private function kelompokPelanggan(iterable $idList): \Illuminate\Support\Collection
@@ -291,36 +319,37 @@ class ResellerController extends Controller
 
     private function kelompokOmzet(iterable $idList): \Illuminate\Support\Collection
     {
-        return $this->queryPembayaran($idList)
-            ->selectRaw('pembayaran.id, tagihan.layanan_internet_id, layanan_internet.pelanggan_id, pelanggan.reseller_id, pembayaran.jumlah_dibayar')
-            ->join('tagihan', 'pembayaran.tagihan_id', '=', 'tagihan.id')
-            ->join('layanan_internet', 'tagihan.layanan_internet_id', '=', 'layanan_internet.id')
-            ->join('pelanggan', 'layanan_internet.pelanggan_id', '=', 'pelanggan.id')
-            ->get()
-            ->groupBy('reseller_id')
-            ->map(fn ($grup) => (float) $grup->sum(fn ($row) => (float) $row->jumlah_dibayar));
+        return $this->queryAlokasiPembayaran($idList)
+            ->selectRaw('pelanggan.reseller_id, SUM(pembayaran_tagihan.jumlah_dialokasikan) as total')
+            ->groupBy('pelanggan.reseller_id')
+            ->pluck('total', 'pelanggan.reseller_id')
+            ->map(fn ($total) => (float) $total);
     }
 
     /** Trend pendapatan 12 bulan terakhir [{bulan, jumlah}]. */
     private function trendPendapatan(iterable $idList): array
     {
         $mulai = Carbon::now()->startOfMonth()->subMonths(11);
-        $rows = $this->queryPembayaran($idList)
-            ->where('dibayar_pada', '>=', $mulai)
-            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
+
+        $rows = $this->queryAlokasiPembayaran($idList)
+            ->where('pembayaran.dibayar_pada', '>=', $mulai)
+            ->selectRaw('date(pembayaran.dibayar_pada) as tanggal, SUM(pembayaran_tagihan.jumlah_dialokasikan) as total')
             ->groupBy('tanggal')
             ->get();
 
         $perBulan = [];
+
         foreach ($rows as $row) {
             $kode = Carbon::parse($row->tanggal)->format('Y-m');
             $perBulan[$kode] = ($perBulan[$kode] ?? 0) + (float) $row->total;
         }
 
         $trend = [];
+
         for ($i = 11; $i >= 0; $i--) {
             $tgl = $mulai->copy()->addMonths($i);
             $kode = $tgl->format('Y-m');
+
             $trend[] = [
                 'bulan' => self::NAMA_BULAN[(int) $tgl->format('n')].' '.substr((string) $tgl->year, 2),
                 'jumlah' => (float) ($perBulan[$kode] ?? 0),
@@ -372,16 +401,19 @@ class ResellerController extends Controller
             ]);
 
         $pembayaran = $this->queryPembayaran($idList)
-            ->with('tagihan.layananInternet.pelanggan.reseller')
+            ->with('pelanggan.reseller', 'alokasiTagihan.tagihan')
             ->latest('dibayar_pada')
             ->limit($limit)
             ->get()
             ->map(fn (Pembayaran $p) => [
                 'id' => $p->id,
                 'jenis' => 'pembayaran',
-                'nomor' => $p->tagihan?->nomor_tagihan ?? '#'.$p->id,
-                'reseller' => $p->tagihan?->layananInternet?->pelanggan?->reseller?->nama_lengkap ?? '-',
-                'pelanggan' => $p->tagihan?->layananInternet?->pelanggan?->nama_lengkap ?? '-',
+                'nomor' => $p->alokasiTagihan
+                    ->pluck('tagihan.nomor_tagihan')
+                    ->filter()
+                    ->join(', ') ?: '#'.$p->id,
+                'reseller' => $p->pelanggan?->reseller?->nama_lengkap ?? '-',
+                'pelanggan' => $p->pelanggan?->nama_lengkap ?? '-',
                 'nominal' => (float) $p->jumlah_dibayar,
                 'status' => 'Lunas',
                 'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
@@ -417,9 +449,9 @@ class ResellerController extends Controller
             if ($bulan !== null) {
                 $queryTagihan->whereMonth('created_at', $bulan);
             }
-            $queryBayar = $this->queryPembayaran([$r->id])->when($tahun, fn ($q) => $q->whereYear('dibayar_pada', $tahun));
+            $queryBayar = $this->queryAlokasiPembayaran([$r->id])->when($tahun, fn ($q) => $q->whereYear('pembayaran.dibayar_pada', $tahun));
             if ($bulan !== null) {
-                $queryBayar->whereMonth('dibayar_pada', $bulan);
+                $queryBayar->whereMonth('pembayaran.dibayar_pada', $bulan);
             }
 
             return [
@@ -436,7 +468,7 @@ class ResellerController extends Controller
                 'tagihan_dibuat' => (clone $queryTagihan)->count(),
                 'tagihan_lunas' => (clone $queryTagihan)->where('status_pembayaran', StatusPembayaranEnum::SUDAH_BAYAR)->count(),
                 'tagihan_belum_bayar' => (clone $queryTagihan)->where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR)->count(),
-                'pendapatan' => (float) (clone $queryBayar)->sum('jumlah_dibayar'),
+                'pendapatan' => (float) (clone $queryBayar)->sum('pembayaran_tagihan.jumlah_dialokasikan'),
             ];
         })->values()->all();
 
@@ -451,7 +483,9 @@ class ResellerController extends Controller
     {
         $limit = 300;
         $qTagihan = $this->queryTagihan($idList)->with('layananInternet.pelanggan.reseller')->whereYear('created_at', $tahun);
-        $qBayar = $this->queryPembayaran($idList)->with('tagihan.layananInternet.pelanggan.reseller')->whereYear('dibayar_pada', $tahun);
+        $qBayar = $this->queryPembayaran($idList)
+            ->with('pelanggan.reseller', 'alokasiTagihan.tagihan')
+            ->whereYear('dibayar_pada', $tahun);
         if ($bulan !== null) {
             $qTagihan->whereMonth('created_at', $bulan);
             $qBayar->whereMonth('dibayar_pada', $bulan);
@@ -467,15 +501,21 @@ class ResellerController extends Controller
             'waktu' => $t->created_at?->format('d M Y H:i'),
         ]);
 
-        $bayar = $qBayar->latest('dibayar_pada')->limit($limit)->get()->map(fn (Pembayaran $p) => [
-            'jenis' => 'pembayaran',
-            'nomor' => $p->tagihan?->nomor_tagihan ?? '#'.$p->id,
-            'reseller' => $p->tagihan?->layananInternet?->pelanggan?->reseller?->nama_lengkap ?? '-',
-            'pelanggan' => $p->tagihan?->layananInternet?->pelanggan?->nama_lengkap ?? '-',
-            'nominal' => (float) $p->jumlah_dibayar,
-            'status' => 'Lunas',
-            'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
-        ]);
+        $bayar = $qBayar->latest('dibayar_pada')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Pembayaran $p) => [
+                'jenis' => 'pembayaran',
+                'nomor' => $p->alokasiTagihan
+                    ->pluck('tagihan.nomor_tagihan')
+                    ->filter()
+                    ->join(', ') ?: '#'.$p->id,
+                'reseller' => $p->pelanggan?->reseller?->nama_lengkap ?? '-',
+                'pelanggan' => $p->pelanggan?->nama_lengkap ?? '-',
+                'nominal' => (float) $p->jumlah_dibayar,
+                'status' => 'Lunas',
+                'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
+            ]);
 
         return $tagihan->concat($bayar)->sortByDesc('waktu')->values()->all();
     }
@@ -485,7 +525,6 @@ class ResellerController extends Controller
         return match ($status) {
             StatusPembayaranEnum::BELUM_BAYAR => 'Belum Bayar',
             StatusPembayaranEnum::SUDAH_BAYAR => 'Lunas',
-            StatusPembayaranEnum::KEDALUWARSA => 'Kedaluwarsa',
             default => '-',
         };
     }

@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -37,11 +38,17 @@ class PendapatanTest extends TestCase
             'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
             'total_tagihan' => 150000,
         ]);
-        Pembayaran::factory()->create([
-            'tagihan_id' => $tagihan->id,
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $pelanggan->id,
             'status' => StatusTransaksiEnum::BERHASIL,
             'jumlah_dibayar' => 150000,
             'dibayar_pada' => now(),
+        ]);
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihan->id,
+            'jumlah_dialokasikan' => 150000,
         ]);
     }
 
@@ -177,5 +184,76 @@ class PendapatanTest extends TestCase
                 'provinsi' => 'Daerah Istimewa Yogyakarta',
                 'kota' => 'Sleman',
             ]);
+    }
+
+    public function test_pembayaran_gabungan_dihitung_sebagai_satu_transaksi(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+
+        $pelanggan = Pelanggan::factory()->create();
+
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusLayananEnum::AKTIF,
+        ]);
+
+        $tagihanJanuari = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+            'total_tagihan' => 150000,
+            'periode_bulan' => now()->month,
+            'periode_tahun' => now()->year,
+        ]);
+
+        $bulanBerikutnya = now()->month === 12 ? 1 : now()->month + 1;
+        $tahunBerikutnya = now()->month === 12 ? now()->year + 1 : now()->year;
+
+        $tagihanFebruari = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+            'total_tagihan' => 150000,
+            'periode_bulan' => $bulanBerikutnya,
+            'periode_tahun' => $tahunBerikutnya,
+        ]);
+
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusTransaksiEnum::BERHASIL,
+            'jumlah_dibayar' => 300000,
+            'dibayar_pada' => now(),
+        ]);
+
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihanJanuari->id,
+            'jumlah_dialokasikan' => 150000,
+        ]);
+
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihanFebruari->id,
+            'jumlah_dialokasikan' => 150000,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->getJson('/api/admin/keuangan/pendapatan?'.http_build_query([
+            'tahun' => now()->year,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('data.stats.total_pendapatan', 'Rp 300.000')
+            ->assertJsonPath('data.stats.jumlah_pembayaran', 1)
+            ->assertJsonCount(1, 'data.pembayaran_terbaru');
+
+        $terbaru = $response->json('data.pembayaran_terbaru.0');
+
+        $this->assertSame($pembayaran->id, $terbaru['id']);
+        $this->assertSame('Rp 300.000', $terbaru['jumlah']);
+        $this->assertStringContainsString(
+            $tagihanJanuari->nomor_tagihan,
+            $terbaru['nomor_tagihan']
+        );
     }
 }

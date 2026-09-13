@@ -4,6 +4,9 @@ namespace Tests\Feature\Api\Keuangan;
 
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
+use App\Enums\StatusTransaksiEnum;
+use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
@@ -203,14 +206,16 @@ class GenerateTagihanManualTest extends TestCase
     {
         $admin = Admin::factory()->keuangan()->create();
         $pelanggan = Pelanggan::factory()->create();
+
         $layanan = LayananInternet::factory()->create([
             'pelanggan_id' => $pelanggan->id,
             'status' => StatusLayananEnum::AKTIF,
         ]);
+
         $tagihan = Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
-            'status_pembayaran' => StatusPembayaranEnum::KEDALUWARSA,
-            'xendit_invoice_retry_count' => 2,
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'total_tagihan' => 100000,
         ]);
 
         Http::fake([
@@ -219,22 +224,60 @@ class GenerateTagihanManualTest extends TestCase
                 'external_id' => 'TGH-'.$tagihan->nomor_tagihan.'-3',
                 'invoice_url' => 'https://checkout.xendit.co/web/inv-baru',
                 'expiry_date' => now()->addDays(7)->toIso8601String(),
+                'status' => 'PENDING',
             ], 200),
         ]);
 
         Sanctum::actingAs($admin);
 
-        $response = $this->postJson("/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link");
+        $response = $this->postJson(
+            "/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link"
+        );
 
         $response->assertOk()
             ->assertJsonPath('message', 'Link pembayaran berhasil diperbarui.')
-            ->assertJsonPath('data.xendit_invoice_url', 'https://checkout.xendit.co/web/inv-baru')
-            ->assertJsonPath('data.xendit_invoice_status', 'active');
+            ->assertJsonPath(
+                'data.payment_url',
+                'https://checkout.xendit.co/web/inv-baru'
+            )
+            ->assertJsonPath(
+                'data.provider_reference',
+                'inv-baru'
+            )
+            ->assertJsonPath(
+                'data.provider_external_id',
+                'TGH-'.$tagihan->nomor_tagihan.'-3'
+            )
+            ->assertJsonPath('data.provider_status', 'PENDING');
 
-        $reload = $tagihan->fresh();
-        $this->assertEquals('inv-baru', $reload->xendit_invoice_id);
-        $this->assertEquals(3, $reload->xendit_invoice_retry_count);
-        $this->assertEquals(StatusPembayaranEnum::BELUM_BAYAR, $reload->status_pembayaran);
+        $pembayaran = Pembayaran::query()
+            ->where('pelanggan_id', $pelanggan->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($pembayaran);
+        $this->assertNull($pembayaran->tagihan_id);
+        $this->assertEquals('xendit', $pembayaran->provider);
+        $this->assertEquals('inv-baru', $pembayaran->provider_reference);
+        $this->assertEquals(
+            'TGH-'.$tagihan->nomor_tagihan.'-3',
+            $pembayaran->provider_external_id
+        );
+        $this->assertEquals(
+            'https://checkout.xendit.co/web/inv-baru',
+            $pembayaran->payment_url
+        );
+        $this->assertEquals('PENDING', $pembayaran->provider_status);
+        $this->assertEquals(100000, $pembayaran->jumlah_dibayar);
+        $this->assertSame(
+            StatusTransaksiEnum::PENDING,
+            $pembayaran->status
+        );
+
+        $this->assertEquals(
+            StatusPembayaranEnum::BELUM_BAYAR,
+            $tagihan->fresh()->status_pembayaran
+        );
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), 'api.xendit.co/v2/invoices')
@@ -246,18 +289,40 @@ class GenerateTagihanManualTest extends TestCase
     {
         $admin = Admin::factory()->keuangan()->create();
         $pelanggan = Pelanggan::factory()->create();
+
         $layanan = LayananInternet::factory()->create([
             'pelanggan_id' => $pelanggan->id,
             'status' => StatusLayananEnum::AKTIF,
         ]);
+
         $tagihan = Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
             'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+            'total_tagihan' => 100000,
+        ]);
+
+        $pembayaran = Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'cash',
+            'provider' => null,
+            'jumlah_dibayar' => 100000,
+            'status' => StatusTransaksiEnum::BERHASIL,
+            'dibayar_pada' => now(),
+        ]);
+
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihan->id,
+            'jumlah_dialokasikan' => 100000,
         ]);
 
         Sanctum::actingAs($admin);
 
-        $this->postJson("/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link")
-            ->assertStatus(422);
+        $this->postJson(
+            "/api/admin/keuangan/tagihan/{$tagihan->id}/perbarui-link"
+        )
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Tagihan sudah lunas.');
     }
 }

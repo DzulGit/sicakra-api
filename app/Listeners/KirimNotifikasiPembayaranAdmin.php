@@ -12,13 +12,30 @@ class KirimNotifikasiPembayaranAdmin
 {
     public function handle(PembayaranBerhasil $event): void
     {
-        $tagihan = $event->tagihan->load('layananInternet.pelanggan');
+        $pembayaran = $event->pembayaran->load([
+            'pelanggan',
+            'alokasiTagihan.tagihan.layananInternet.pelanggan',
+        ]);
+
+        $tagihan = $pembayaran->alokasiTagihan
+            ->first()
+            ?->tagihan;
+
+        if (! $tagihan) {
+            return;
+        }
 
         Notification::send(
             Admin::where('status_aktif', true)
-                ->whereIn('peran', [PeranAdminEnum::KEUANGAN, PeranAdminEnum::SUPER_ADMIN])
+                ->whereIn('peran', [
+                    PeranAdminEnum::KEUANGAN,
+                    PeranAdminEnum::SUPER_ADMIN,
+                ])
                 ->get(),
-            new PembayaranTagihanNotification($tagihan, $event->pembayaran),
+            new PembayaranTagihanNotification(
+                $tagihan,
+                $pembayaran
+            ),
         );
     }
 }

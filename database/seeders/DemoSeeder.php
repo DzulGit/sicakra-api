@@ -20,6 +20,7 @@ use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Perangkat;
 use App\Models\PermohonanLayanan;
 use App\Models\RiwayatPerubahanPaket;
@@ -448,88 +449,73 @@ class DemoSeeder extends Seeder
     // ------------------------------------------------------------------
     private function seedTagihan(): void
     {
-        $layanan = LayananInternet::where('status', StatusLayananEnum::AKTIF)->get();
+        $layanan = LayananInternet::where(status, StatusLayananEnum::AKTIF)->get();
         $total = $layanan->count();
         $targetPaid = (int) round($total * 0.60);
-        $targetUnpaid = (int) round($total * 0.30);
 
-        $layanan->each(function (LayananInternet $l, int $idx) use ($targetPaid, $targetUnpaid) {
-            if ($idx < $targetPaid) {
-                $this->buatTagihan($l, StatusPembayaranEnum::SUDAH_BAYAR);
-            } elseif ($idx < $targetPaid + $targetUnpaid) {
-                $this->buatTagihan($l, StatusPembayaranEnum::BELUM_BAYAR);
-            } else {
-                $this->buatTagihan($l, StatusPembayaranEnum::KEDALUWARSA);
-            }
+        $layanan->each(function (LayananInternet $l, int $idx) use ($targetPaid) {
+            $this->buatTagihan(
+                $l,
+                $idx < $targetPaid
+                    ? StatusPembayaranEnum::SUDAH_BAYAR
+                    : StatusPembayaranEnum::BELUM_BAYAR
+            );
         });
     }
 
     private function buatTagihan(LayananInternet $layanan, StatusPembayaranEnum $status): Tagihan
     {
-        $pelanggan = $layanan->pelanggan;
-        $hariTagih = (int) ($pelanggan->tanggal_tagihan ?? 20);
         $paket = $layanan->paketInternet;
-
         $periode = Carbon::today();
         $jumlahBulan = ($status === StatusPembayaranEnum::SUDAH_BAYAR && $layanan->id % 7 === 0) ? 2 : 1;
 
         $tagihan = Tagihan::create([
-            'nomor_tagihan' => $this->generator->generate(Tagihan::class, 'nomor_tagihan', 'INV'),
-            'layanan_internet_id' => $layanan->id,
-            'periode_bulan' => $periode->month,
-            'periode_tahun' => $periode->year,
-            'nama_paket_snapshot' => $paket->nama_paket,
-            'kecepatan_snapshot_mbps' => $paket->kecepatan_mbps,
-            'harga_snapshot' => $paket->harga,
-            'total_tagihan' => $paket->harga * $jumlahBulan,
-            'jumlah_bulan' => $jumlahBulan,
-            'status_pembayaran' => $status,
+            nomor_tagihan => $this->generator->generate(Tagihan::class, nomor_tagihan, INV),
+            layanan_internet_id => $layanan->id,
+            periode_bulan => $periode->month,
+            periode_tahun => $periode->year,
+            nama_paket_snapshot => $paket->nama_paket,
+            kecepatan_snapshot_mbps => $paket->kecepatan_mbps,
+            harga_snapshot => $paket->harga,
+            total_tagihan => $paket->harga * $jumlahBulan,
+            jumlah_bulan => $jumlahBulan,
+            status_pembayaran => $status,
         ]);
 
-        switch ($status) {
-            case StatusPembayaranEnum::SUDAH_BAYAR:
-                $dibayarPada = $periode->copy()
-                    ->addDays(mt_rand(1, 3))
-                    ->setTime(mt_rand(8, 16), mt_rand(0, 59));
-                if ($dibayarPada->gt(Carbon::today())) {
-                    $dibayarPada = Carbon::today()->subDay()->setTime(10, 15);
-                }
-                $tagihan->update([
-                    'xendit_invoice_status' => 'PAID',
-                    'dibayar_pada' => $dibayarPada,
-                ]);
-                $tagihan->pembayaran()->create([
-                    'metode_pembayaran' => $layanan->id % 2 === 0 ? 'xendit' : 'tunai',
-                    'dibayar_oleh' => $layanan->id % 2 === 0 ? null : $this->keuangan->nama_lengkap,
-                    'jumlah_dibayar' => $tagihan->total_tagihan,
-                    'referensi_xendit' => 'demo-'.strtolower(Str::random(10)),
-                    'status' => StatusTransaksiEnum::BERHASIL,
-                    'dibayar_pada' => $dibayarPada,
-                ]);
-                break;
-
-            case StatusPembayaranEnum::BELUM_BAYAR:
-                $tagihan->update([
-                    'xendit_invoice_id' => 'inv_demo_'.strtolower(Str::random(24)),
-                    'xendit_external_id' => $tagihan->nomor_tagihan,
-                    'xendit_invoice_url' => 'https://checkout.xendit.co/web/demo',
-                    'xendit_invoice_status' => 'PENDING',
-                    'xendit_invoice_expires_at' => $jatuhTempo->copy()->addDays(1),
-                ]);
-                break;
-
-            case StatusPembayaranEnum::KEDALUWARSA:
-                $tagihan->update([
-                    'xendit_invoice_id' => 'inv_demo_'.strtolower(Str::random(24)),
-                    'xendit_external_id' => $tagihan->nomor_tagihan,
-                    'xendit_invoice_url' => 'https://checkout.xendit.co/web/demo',
-                    'xendit_invoice_status' => 'EXPIRED',
-                    'xendit_invoice_expires_at' => $jatuhTempo->copy()->subDay(),
-                    'xendit_invoice_retry_count' => mt_rand(0, 1),
-                    'retry_count' => mt_rand(0, 2),
-                ]);
-                break;
+        if ($status !== StatusPembayaranEnum::SUDAH_BAYAR) {
+            return $tagihan;
         }
+
+        $dibayarPada = $periode->copy()
+            ->addDays(mt_rand(1, 3))
+            ->setTime(mt_rand(8, 16), mt_rand(0, 59));
+
+        if ($dibayarPada->gt(Carbon::today())) {
+            $dibayarPada = Carbon::today()->subDay()->setTime(10, 15);
+        }
+
+        $pembayaran = Pembayaran::create([
+            tagihan_id => null,
+            pelanggan_id => $layanan->pelanggan_id,
+            metode_pembayaran => $layanan->id % 2 === 0 ? xendit : tunai,
+            provider => $layanan->id % 2 === 0 ? xendit : null,
+            provider_reference => $layanan->id % 2 === 0 ? demo-.strtolower(Str::random(10)) : null,
+            provider_status => $layanan->id % 2 === 0 ? PAID : null,
+            dibayar_oleh => $layanan->id % 2 === 0 ? null : $this->keuangan->nama_lengkap,
+            jumlah_dibayar => $tagihan->total_tagihan,
+            status => StatusTransaksiEnum::BERHASIL,
+            dibayar_pada => $dibayarPada,
+        ]);
+
+        PembayaranTagihan::create([
+            pembayaran_id => $pembayaran->id,
+            tagihan_id => $tagihan->id,
+            jumlah_dialokasikan => $tagihan->total_tagihan,
+        ]);
+
+        $tagihan->update([
+            dibayar_pada => $dibayarPada,
+        ]);
 
         return $tagihan;
     }

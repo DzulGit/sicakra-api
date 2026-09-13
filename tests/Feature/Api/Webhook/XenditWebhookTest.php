@@ -3,7 +3,10 @@
 namespace Tests\Feature\Api\Webhook;
 
 use App\Enums\StatusPembayaranEnum;
+use App\Enums\StatusTransaksiEnum;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
+use App\Models\Pelanggan;
 use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -15,22 +18,29 @@ class XenditWebhookTest extends TestCase
 
     private Tagihan $tagihan;
 
+    private Pelanggan $pelanggan;
+
     private string $validToken = 'test-webhook-token';
 
     protected function setUp(): void
     {
         parent::setUp();
+
         Config::set('services.xendit.webhook_verification_token', $this->validToken);
+
         $this->tagihan = Tagihan::factory()->create([
             'nomor_tagihan' => 'INV000001',
             'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'total_tagihan' => 150000,
         ]);
+
+        $this->pelanggan = $this->tagihan->layananInternet->pelanggan;
     }
 
     public function test_webhook_tanpa_token_harus_401(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+            'external_id' => 'PAY-999',
             'status' => 'PAID',
         ]);
 
@@ -41,77 +51,170 @@ class XenditWebhookTest extends TestCase
     public function test_webhook_dengan_token_salah_harus_401(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+            'external_id' => 'PAY-999',
             'status' => 'PAID',
-        ], ['X-Callback-Token' => 'wrong-token']);
+        ], [
+            'X-Callback-Token' => 'wrong-token',
+        ]);
 
         $response->assertStatus(401);
         $this->assertEquals(0, Pembayaran::count());
     }
 
-    public function test_webhook_status_paid_update_tagihan_dan_buat_pembayaran(): void
+    public function test_webhook_status_paid_menyelesaikan_pembayaran_dan_alokasi_tagihan(): void
     {
+        $pembayaran = $this->buatPembayaranPending();
+
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+            'external_id' => 'PAY-' . $pembayaran->id,
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
             'amount' => 150000,
             'paid_amount' => 150000,
             'payment_method' => 'BCA',
-        ], ['X-Callback-Token' => $this->getVerificationToken()]);
+        ], [
+            'X-Callback-Token' => $this->getVerificationToken(),
+        ]);
 
         $response->assertOk();
 
+        $pembayaran->refresh();
         $this->tagihan->refresh();
-        $this->assertEquals(StatusPembayaranEnum::SUDAH_BAYAR, $this->tagihan->status_pembayaran);
+
+        $this->assertNull($pembayaran->tagihan_id);
+
+        $this->assertEquals(
+            $this->pelanggan->id,
+            $pembayaran->pelanggan_id
+        );
+
+        $this->assertEquals(
+            StatusTransaksiEnum::BERHASIL,
+            $pembayaran->status
+        );
+
+        $this->assertEquals(
+            150000,
+            (float) $pembayaran->jumlah_dibayar
+        );
+
+        $this->assertEquals(
+            'BCA',
+            $pembayaran->metode_pembayaran
+        );
+
+        $this->assertEquals(
+            'xendit-inv-123',
+            $pembayaran->provider_reference
+        );
+
+        $this->assertEquals(
+            StatusPembayaranEnum::SUDAH_BAYAR,
+            $this->tagihan->status_pembayaran
+        );
+
         $this->assertNotNull($this->tagihan->dibayar_pada);
 
-        $this->assertEquals(1, Pembayaran::count());
-        $pembayaran = Pembayaran::first();
-        $this->assertEquals('berhasil', $pembayaran->status->value);
-        $this->assertEquals(150000, (float) $pembayaran->jumlah_dibayar);
-        $this->assertEquals('BCA', $pembayaran->metode_pembayaran);
-        $this->assertEquals('xendit-inv-123', $pembayaran->referensi_xendit);
+        $this->assertEquals(
+            1,
+            PembayaranTagihan::where('pembayaran_id', $pembayaran->id)->count()
+        );
+
+        $alokasi = PembayaranTagihan::where('pembayaran_id', $pembayaran->id)
+            ->first();
+
+        $this->assertEquals(
+            $this->tagihan->id,
+            $alokasi->tagihan_id
+        );
+
+        $this->assertEquals(
+            150000,
+            (float) $alokasi->jumlah_dialokasikan
+        );
     }
 
     public function test_webhook_status_paid_idempotent_tidak_dobel_update(): void
     {
-        $this->tagihan->update([
-            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
-            'dibayar_pada' => now(),
-        ]);
+        $pembayaran = $this->buatPembayaranPending();
 
-        $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+        $payload = [
+            'external_id' => 'PAY-' . $pembayaran->id,
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
             'amount' => 150000,
             'paid_amount' => 150000,
             'payment_method' => 'BCA',
-        ], ['X-Callback-Token' => $this->getVerificationToken()]);
+        ];
 
-        $response->assertOk();
+        $responsePertama = $this->postJson(
+            '/api/webhook/xendit',
+            $payload,
+            ['X-Callback-Token' => $this->getVerificationToken()]
+        );
+
+        $responsePertama->assertOk();
+
+        $responseKedua = $this->postJson(
+            '/api/webhook/xendit',
+            $payload,
+            ['X-Callback-Token' => $this->getVerificationToken()]
+        );
+
+        $responseKedua->assertOk();
+
         $this->assertEquals(1, Pembayaran::count());
+
+        $this->assertEquals(
+            1,
+            PembayaranTagihan::where('pembayaran_id', $pembayaran->id)->count()
+        );
+
+        $this->tagihan->refresh();
+
+        $this->assertEquals(
+            StatusPembayaranEnum::SUDAH_BAYAR,
+            $this->tagihan->status_pembayaran
+        );
     }
 
-    public function test_webhook_status_expired_update_tagihan(): void
+    public function test_webhook_status_expired_menggagalkan_pembayaran(): void
     {
+        $pembayaran = $this->buatPembayaranPending();
+
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV000001',
+            'external_id' => 'PAY-' . $pembayaran->id,
             'id' => 'xendit-inv-123',
             'status' => 'EXPIRED',
             'amount' => 150000,
-        ], ['X-Callback-Token' => $this->getVerificationToken()]);
+        ], [
+            'X-Callback-Token' => $this->getVerificationToken(),
+        ]);
 
         $response->assertOk();
 
+        $pembayaran->refresh();
         $this->tagihan->refresh();
-        $this->assertEquals(StatusPembayaranEnum::KEDALUWARSA, $this->tagihan->status_pembayaran);
-        $this->assertEquals('expired', $this->tagihan->xendit_invoice_status);
 
-        $this->assertEquals(1, Pembayaran::count());
-        $pembayaran = Pembayaran::first();
-        $this->assertEquals('gagal', $pembayaran->status->value);
+        $this->assertEquals(
+            StatusTransaksiEnum::GAGAL,
+            $pembayaran->status
+        );
+
+        $this->assertEquals(
+            'expired',
+            $pembayaran->provider_status
+        );
+
+        $this->assertEquals(
+            StatusPembayaranEnum::BELUM_BAYAR,
+            $this->tagihan->status_pembayaran
+        );
+
+        $this->assertEquals(
+            0,
+            PembayaranTagihan::count()
+        );
     }
 
     public function test_webhook_dengan_external_id_tidak_valid_harus_400(): void
@@ -120,22 +223,46 @@ class XenditWebhookTest extends TestCase
             'external_id' => 'INVALID-FORMAT',
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
-        ], ['X-Callback-Token' => $this->getVerificationToken()]);
+        ], [
+            'X-Callback-Token' => $this->getVerificationToken(),
+        ]);
 
         $response->assertStatus(400);
+
         $this->assertEquals(0, Pembayaran::count());
     }
 
-    public function test_webhook_dengan_nomor_tagihan_tidak_dikenal_harus_404(): void
+    public function test_webhook_dengan_pembayaran_tidak_dikenal_harus_404(): void
     {
         $response = $this->postJson('/api/webhook/xendit', [
-            'external_id' => 'TGH-INV9999999',
+            'external_id' => 'PAY-999999',
             'id' => 'xendit-inv-123',
             'status' => 'PAID',
-        ], ['X-Callback-Token' => $this->getVerificationToken()]);
+        ], [
+            'X-Callback-Token' => $this->getVerificationToken(),
+        ]);
 
         $response->assertStatus(404);
+
         $this->assertEquals(0, Pembayaran::count());
+    }
+
+    private function buatPembayaranPending(): Pembayaran
+    {
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $this->pelanggan->id,
+            'metode_pembayaran' => 'BCA',
+            'provider' => 'xendit',
+            'jumlah_dibayar' => 150000,
+            'status' => StatusTransaksiEnum::PENDING,
+        ]);
+
+        $pembayaran->update([
+            'provider_external_id' => 'PAY-' . $pembayaran->id,
+        ]);
+
+        return $pembayaran->fresh();
     }
 
     private function getVerificationToken(): string

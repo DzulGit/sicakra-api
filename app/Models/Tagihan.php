@@ -83,6 +83,14 @@ class Tagihan extends Model
         return $this->hasMany(Pembayaran::class, 'tagihan_id');
     }
 
+    public function alokasiPembayaran(): HasMany
+    {
+        return $this->hasMany(
+            PembayaranTagihan::class,
+            'tagihan_id'
+        );
+    }
+
     public function scopeDraft($query)
     {
         return $query->where('status_pembayaran', StatusPembayaranEnum::BELUM_DITERBITKAN);

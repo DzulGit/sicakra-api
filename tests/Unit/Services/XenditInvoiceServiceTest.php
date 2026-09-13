@@ -2,32 +2,21 @@
 
 namespace Tests\Unit\Services;
 
-use App\Models\Tagihan;
-use App\Services\XenditInvoiceService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\Pembayaran;
 use Tests\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class XenditInvoiceServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_external_id_tanpa_retry_tidak_ber_suffix(): void
+    public function test_external_id_menggunakan_id_pembayaran(): void
     {
-        $tagihan = Tagihan::factory()->create([
-            'nomor_tagihan' => 'INV000001',
-            'xendit_invoice_retry_count' => 0,
-        ]);
+        $pembayaran = Pembayaran::factory()->create();
 
-        $this->assertEquals('TGH-INV000001', app(XenditInvoiceService::class)->buatExternalId($tagihan));
-    }
-
-    public function test_external_id_di_retry_kedua_memakai_suffix(): void
-    {
-        $tagihan = Tagihan::factory()->create([
-            'nomor_tagihan' => 'INV000001',
-            'xendit_invoice_retry_count' => 2,
-        ]);
-
-        $this->assertEquals('TGH-INV000001-2', app(XenditInvoiceService::class)->buatExternalId($tagihan));
+        $this->assertEquals(
+            'PAY-' . $pembayaran->id,
+            app(\App\Services\XenditInvoiceService::class)->buatExternalId($pembayaran)
+        );
     }
 }

@@ -11,6 +11,7 @@ use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -37,10 +38,19 @@ class ResellerMonitoringTest extends TestCase
             'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
             'total_tagihan' => 100000,
         ]);
-        Pembayaran::factory()->create([
-            'tagihan_id' => $tagihan->id,
+
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $pelanggan->id,
             'status' => StatusTransaksiEnum::BERHASIL,
             'jumlah_dibayar' => 100000,
+            'dibayar_pada' => now(),
+        ]);
+
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihan->id,
+            'jumlah_dialokasikan' => 100000,
         ]);
 
         $this->withHeader('Authorization', "Bearer {$token}")
@@ -50,7 +60,18 @@ class ResellerMonitoringTest extends TestCase
             ->assertJsonPath('data.stats.total_pelanggan', 1)
             ->assertJsonPath('data.stats.total_pendapatan', 100000)
             ->assertJsonPath('data.distribusi_pelanggan.0.label', $reseller->nama_lengkap)
-            ->assertJsonCount(1, 'data.transaksi_terbaru');
+            ->assertJsonCount(2, 'data.transaksi_terbaru')
+            ->assertJsonFragment([
+                'jenis' => 'tagihan',
+                'nomor' => $tagihan->nomor_tagihan,
+            ])
+            ->assertJsonFragment([
+                'jenis' => 'pembayaran',
+                'nomor' => $tagihan->nomor_tagihan,
+                'pelanggan' => $pelanggan->nama_lengkap,
+                'nominal' => 100000,
+                'status' => 'Lunas',
+            ]);
     }
 
     public function test_statistik_per_reseller_mengembalikan_trend_status_dan_distribusi_paket(): void

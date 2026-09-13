@@ -11,10 +11,12 @@ use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
+use App\Models\MutasiSaldoKredit;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
 use App\Services\GenerateTagihanService;
 use App\Services\SiklusPenagihanService;
 use App\Services\XenditInvoiceService;
+use App\Services\PembayaranAllocationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,7 @@ class TagihanController extends Controller
         private readonly GenerateTagihanService $generateTagihanService,
         private readonly SiklusPenagihanService $siklusPenagihanService,
         private readonly XenditInvoiceService $xenditInvoiceService,
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
     public function index(TagihanFilter $filter)
@@ -305,16 +308,44 @@ class TagihanController extends Controller
             'jumlah_bulan' => 'required|integer|min:1|max:12',
         ]);
 
-        $jumlahBulan = $validated['jumlah_bulan'];
+        $jumlahBulan = (int) $validated['jumlah_bulan'];
 
-        $tagihan->update([
-            'jumlah_bulan' => $jumlahBulan,
-            'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
-        ]);
+        $tagihan = DB::transaction(function () use ($tagihan, $jumlahBulan) {
+            $tagihan = Tagihan::query()
+                ->lockForUpdate()
+                ->findOrFail($tagihan->id);
+
+            $sudahAdaPembayaran = $tagihan
+                ->alokasiPembayaran()
+                ->exists();
+
+            $sudahDipakaiKredit = MutasiSaldoKredit::query()
+                ->where('tagihan_id', $tagihan->id)
+                ->where('jenis', 'pemakaian')
+                ->exists();
+
+            if ($sudahAdaPembayaran || $sudahDipakaiKredit) {
+                abort(422, 'Tagihan tidak dapat di-generate ulang karena sudah memiliki transaksi pembayaran.');
+            }
+
+            $tagihan->update([
+                'jumlah_bulan' => $jumlahBulan,
+                'total_tagihan' => round(
+                    (float) $tagihan->harga_snapshot * $jumlahBulan,
+                    2
+                ),
+            ]);
+
+            return $tagihan;
+        });
 
         return response()->json([
             'message' => 'Tagihan berhasil di-generate ulang.',
-            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+            'data' => $tagihan->fresh([
+                'layananInternet.paketInternet',
+                'layananInternet.pelanggan',
+                'pembayaran',
+            ]),
         ]);
     }
 
@@ -327,58 +358,68 @@ class TagihanController extends Controller
     {
         $this->authorize('regenerate', $tagihan);
 
-        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
-            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        $tagihan->loadMissing('layananInternet.pelanggan');
+
+        $pelanggan = $tagihan->layananInternet?->pelanggan;
+
+        if (! $pelanggan) {
+            return response()->json([
+                'message' => 'Pelanggan tagihan tidak ditemukan.',
+            ], 422);
+        }
+
+        $sisaTagihan = $this->hitungSisaTagihan($tagihan);
+
+        if ($sisaTagihan <= 0) {
+            return response()->json([
+                'message' => 'Tagihan sudah lunas.',
+            ], 422);
         }
 
         $validated = $request->validate([
-            'jumlah_bulan' => 'sometimes|integer|min:1|max:12',
+            'jumlah_dibayar' => [
+                'required',
+                'numeric',
+                'gt:0',
+            ],
         ]);
 
-        $jumlahBulan = $validated['jumlah_bulan'] ?? $tagihan->jumlah_bulan;
+        $jumlahDibayar = round(
+            (float) $validated['jumlah_dibayar'],
+            2
+        );
+
+        if ($jumlahDibayar <= 0) {
+            return response()->json([
+                'message' => 'Jumlah pembayaran harus lebih besar dari 0.',
+            ], 422);
+        }
+
         $admin = $request->user();
 
-        $tagihanBaru = DB::transaction(function () use ($tagihan, $jumlahBulan, $admin) {
-            $tagihan->update([
-                'jumlah_bulan' => $jumlahBulan,
-                'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
-            ]);
+        $pembayaran = $this->pembayaranAllocationService
+            ->buatPembayaranTunai(
+                $pelanggan,
+                $jumlahDibayar,
+                [
+                    'metode_pembayaran' => 'tunai',
+                    'dibayar_oleh' => $admin->nama_lengkap,
+                ]
+            );
 
-            $pembayaran = $tagihan->pembayaran()->create([
-                'metode_pembayaran' => 'tunai',
-                'dibayar_oleh' => $admin->nama_lengkap,
-                'jumlah_dibayar' => $tagihan->total_tagihan,
-                'status' => StatusTransaksiEnum::BERHASIL,
-                'dibayar_pada' => now(),
-            ]);
-
-            $tagihan->update([
-                'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
-                'dibayar_pada' => $pembayaran->dibayar_pada,
-                'xendit_invoice_status' => 'paid',
-            ]);
-
-            $layanan = $tagihan->layananInternet;
-            if ($layanan) {
-                $layanan->update([
-                    'tanggal_aktif' => $layanan->tanggal_aktif->copy()->addMonths($jumlahBulan),
-                ]);
-
-                // Jadwal penagihan dimajukan ke periode pertama yang belum terbayar,
-                // supaya cron tidak tagih ulang bulan yang sudah dilunasi di muka.
-                $this->siklusPenagihanService->majukanJadwalSetelahPembayaran($tagihan);
-            }
-
-            PembayaranBerhasil::dispatch($tagihan, $pembayaran);
-
-            return $tagihan;
-        });
+        PembayaranBerhasil::dispatch($pembayaran);
 
         return response()->json([
-            'message' => "Pembayaran tunai diterima (oleh {$admin->nama_lengkap}). Tagihan lunas.",
-            'data' => $tagihanBaru->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+            'message' => 'Pembayaran tunai berhasil diproses.',
+            'data' => $pembayaran->fresh([
+                'pelanggan',
+                'alokasiTagihan.tagihan.layananInternet.paketInternet',
+                'mutasiSaldoKredit',
+            ]),
         ]);
     }
+
+    private function hitungSisaTagihan(Tagihan $tagihan): float { return $this->pembayaranAllocationService->hitungSisaTagihan($tagihan); }
 
     /**
      * Perbarui link pembayaran (regenerate invoice Xendit) untuk tagihan yang
@@ -390,38 +431,63 @@ class TagihanController extends Controller
     {
         $this->authorize('create', Tagihan::class);
 
-        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
-            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        $tagihan->loadMissing('layananInternet.pelanggan');
+
+        $pelanggan = $tagihan->layananInternet?->pelanggan;
+
+        if (! $pelanggan) {
+            return response()->json([
+                'message' => 'Pelanggan tagihan tidak ditemukan.',
+            ], 422);
         }
 
-        // Reset state invoice lama, naikkan retry invoice (biar external_id baru
-        // unik di Xendit), lalu minta invoice baru dengan durasi 7 hari.
-        $tagihan->update([
-            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
-            'xendit_invoice_id' => null,
-            'xendit_external_id' => null,
-            'xendit_invoice_url' => null,
-            'xendit_invoice_status' => 'expired',
-            'xendit_invoice_expires_at' => null,
-            'xendit_invoice_retry_count' => $tagihan->xendit_invoice_retry_count + 1,
+        $sisaTagihan = $this->hitungSisaTagihan($tagihan);
+
+        if ($sisaTagihan <= 0) {
+            return response()->json([
+                'message' => 'Tagihan sudah lunas.',
+            ], 422);
+        }
+
+        $pembayaran = \App\Models\Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'xendit',
+            'provider' => 'xendit',
+            'jumlah_dibayar' => $sisaTagihan,
+            'status' => StatusTransaksiEnum::PENDING,
         ]);
 
-        $body = $this->xenditInvoiceService->buatInvoice($tagihan->fresh(), durasiHari: 7);
+        try {
+            $body = $this->xenditInvoiceService->buatInvoice(
+                $pembayaran,
+                durasiHari: 7,
+            );
 
-        $tagihan->update([
-            'xendit_invoice_id' => $body['id'],
-            'xendit_external_id' => $body['external_id'] ?? null,
-            'xendit_invoice_url' => $body['invoice_url'],
-            'xendit_invoice_status' => 'active',
-            'xendit_invoice_expires_at' => $body['expiry_date'] ?? null,
-        ]);
+            $pembayaran->update([
+                'provider_reference' => $body['id'] ?? null,
+                'provider_external_id' => $body['external_id'] ?? null,
+                'payment_url' => $body['invoice_url'] ?? null,
+                'provider_status' => $body['status'] ?? 'active',
+                'provider_expires_at' => $body['expiry_date'] ?? null,
+            ]);
 
-        return response()->json([
-            'message' => 'Link pembayaran berhasil diperbarui.',
-            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
-        ]);
+            return response()->json([
+                'message' => 'Link pembayaran berhasil diperbarui.',
+                'data' => $pembayaran->fresh([
+                    'pelanggan',
+                    'alokasiTagihan.tagihan',
+                ]),
+            ]);
+        } catch (\Throwable $e) {
+            $pembayaran->update([
+                'status' => StatusTransaksiEnum::GAGAL,
+                'provider_status' => 'failed',
+            ]);
+
+            throw $e;
+        }
     }
-
     // Sengaja TIDAK ADA store()/update() — selain generate manual di atas,
     // Tagihan draft dibuat oleh cron bulanan (tagihan:generate-draft).
 

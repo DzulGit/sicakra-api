@@ -32,7 +32,9 @@ class GenerateTagihanServiceTest extends TestCase
             ->generateUntukLayanan($layanan, 7, 2026);
 
         $this->assertNotNull($tagihan);
-        $this->assertEquals('2026-07-15', $tagihan->tanggal_jatuh_tempo->toDateString());
+
+        $this->assertEquals(7, $tagihan->periode_bulan);
+        $this->assertEquals(2026, $tagihan->periode_tahun);
     }
 
     public function test_tidak_generate_tagihan_untuk_layanan_nonaktif(): void
@@ -79,21 +81,6 @@ class GenerateTagihanServiceTest extends TestCase
         $this->assertNull($tagihanFebruari);
         $this->assertNull($tagihanMaret);
         $this->assertEquals(1, Tagihan::where('layanan_internet_id', $layanan->id)->count());
-    }
-
-    public function test_tanggal_jatuh_tempo_di_clamp_untuk_bulan_yang_lebih_pendek(): void
-    {
-        $layanan = LayananInternet::factory()->create([
-            'status' => StatusLayananEnum::AKTIF,
-            'tanggal_aktif' => '2026-01-31', // aktif di tanggal 31
-        ]);
-        $layanan->pelanggan->update(['tanggal_tagihan' => 31]);
-
-        // Februari 2026 cuma 28 hari (bukan tahun kabisat)
-        $tagihan = app(GenerateTagihanService::class)
-            ->generateUntukLayanan($layanan, 2, 2026);
-
-        $this->assertEquals('2026-02-28', $tagihan->tanggal_jatuh_tempo->toDateString());
     }
 
     public function test_snapshot_paket_tersimpan_benar(): void

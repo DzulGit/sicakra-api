@@ -2,105 +2,280 @@
 
 namespace App\Http\Controllers\Api\Webhook;
 
-use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
-use App\Models\Tagihan;
-use App\Services\SiklusPenagihanService;
+use App\Http\Controllers\Controller;
+use App\Models\Pembayaran;
+use App\Services\PembayaranAllocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class XenditWebhookController
+class XenditWebhookController extends Controller
 {
     public function __construct(
-        private readonly SiklusPenagihanService $siklusPenagihanService,
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
     {
-        // Debug: cek di storage/logs/laravel.log apakah payload Xendit benar-benar masuk.
-        Log::info('Xendit webhook masuk', ['payload' => $request->all()]);
+        Log::info('Xendit webhook masuk', [
+            'payload' => $request->all(),
+        ]);
 
+        /*
+         * 1. Validasi callback token Xendit.
+         */
         $token = $request->header('X-Callback-Token');
 
-        if (! $token || ! hash_equals(config('services.xendit.webhook_verification_token'), $token)) {
-            return response()->json(['message' => 'Unauthorized'], 401);
+        $expectedToken = config(
+            'services.xendit.webhook_verification_token'
+        );
+
+        if (
+            !$token
+            || !$expectedToken
+            || !hash_equals($expectedToken, $token)
+        ) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
         }
 
         $payload = $request->all();
-        $externalId = $payload['external_id'] ?? '';
-        $xenditInvoiceId = $payload['id'] ?? '';
-        $status = $payload['status'] ?? '';
 
-        $tagihanPrefix = 'TGH-';
-        $nomorTagihan = str_starts_with($externalId, $tagihanPrefix)
-            ? substr($externalId, strlen($tagihanPrefix))
-            : null;
+        $externalId = $payload['external_id'] ?? null;
+        $xenditInvoiceId = $payload['id'] ?? null;
+        $status = strtoupper($payload['status'] ?? '');
 
-        // external_id regenerate memakai suffix "-N" (mis. INV000001-2 biar unik
-        // di Xendit). Strip suffix itu agar lookup nomor tagihan tetap cocok.
-        $nomorTagihan = $nomorTagihan ? preg_replace('/-\d+$/', '', $nomorTagihan) : null;
-
-        if (! $nomorTagihan) {
-            return response()->json(['message' => 'Invalid external_id'], 400);
+        /*
+         * 2. Webhook harus memiliki external_id.
+         *
+         * External ID kita sekarang:
+         *
+         * PAY-123
+         *
+         * dimana 123 adalah ID Pembayaran.
+         */
+        if (!$externalId) {
+            return response()->json([
+                'message' => 'Invalid external_id',
+            ], 400);
         }
 
-        $tagihan = Tagihan::where('nomor_tagihan', $nomorTagihan)->first();
-
-        if (! $tagihan) {
-            return response()->json(['message' => 'Tagihan not found'], 404);
+        if (!str_starts_with($externalId, 'PAY-')) {
+            return response()->json([
+                'message' => 'Unsupported external_id',
+            ], 400);
         }
 
-        $simpanPembayaran = function () use ($tagihan, $payload, $xenditInvoiceId, $status) {
-            return $tagihan->pembayaran()->create([
-                'metode_pembayaran' => $payload['payment_method'] ?? null,
-                'jumlah_dibayar' => $payload['paid_amount'] ?? $payload['amount'] ?? $tagihan->total_tagihan,
-                'referensi_xendit' => $xenditInvoiceId,
-                'status' => $status === 'PAID' || $status === 'SETTLED'
-                    ? StatusTransaksiEnum::BERHASIL
-                    : StatusTransaksiEnum::GAGAL,
+        /*
+         * 3. Cari Pembayaran yang memang membuat invoice tersebut.
+         *
+         * Jangan membuat Pembayaran baru di webhook.
+         */
+        $pembayaran = Pembayaran::query()
+            ->where('provider', 'xendit')
+            ->where('provider_external_id', $externalId)
+            ->first();
+
+        if (!$pembayaran) {
+            return response()->json([
+                'message' => 'Pembayaran not found',
+            ], 404);
+        }
+
+        /*
+         * 4. Simpan informasi provider terlebih dahulu.
+         *
+         * provider_reference = ID invoice Xendit
+         * provider_external_id = PAY-{pembayaran_id}
+         */
+        $pembayaran->update([
+            'provider_reference' =>
+                $xenditInvoiceId
+                ?? $pembayaran->provider_reference,
+
+            'provider_external_id' =>
+                $externalId,
+
+            'provider_status' =>
+                strtolower($status),
+
+            'payload_webhook' =>
+                $payload,
+        ]);
+
+        /*
+         * 5. PAID / SETTLED
+         */
+        if (in_array($status, ['PAID', 'SETTLED'], true)) {
+            return $this->prosesPembayaranBerhasil(
+                $pembayaran->fresh(),
+                $payload
+            );
+        }
+
+        /*
+         * 6. EXPIRED
+         */
+        if ($status === 'EXPIRED') {
+            return $this->prosesPembayaranExpired(
+                $pembayaran->fresh(),
+                $payload
+            );
+        }
+
+        /*
+         * Status lain seperti PENDING tidak dianggap gagal.
+         * Kita simpan status provider dan selesai.
+         */
+        return response()->json([
+            'message' => 'Webhook diterima.',
+        ]);
+    }
+
+    private function prosesPembayaranBerhasil(
+        Pembayaran $pembayaran,
+        array $payload
+    ): JsonResponse {
+        $hasil = DB::transaction(function () use ($pembayaran, $payload) {
+            $pembayaran = Pembayaran::query()
+                ->lockForUpdate()
+                ->findOrFail($pembayaran->id);
+
+            /*
+            * Kalau webhook PAID yang sama dikirim ulang,
+            * jangan proses allocation ulang.
+            */
+            if (
+                $pembayaran->status ===
+                StatusTransaksiEnum::BERHASIL
+            ) {
+                $pembayaran->update([
+                    'provider_status' => 'paid',
+                    'payload_webhook' => $payload,
+                ]);
+
+                return [
+                    'pembayaran' => $pembayaran->fresh([
+                        'pelanggan',
+                        'alokasiTagihan.tagihan',
+                        'mutasiSaldoKredit',
+                    ]),
+                    'baru_berhasil' => false,
+                ];
+            }
+
+            /*
+            * Pembayaran hanya boleh diproses dari PENDING.
+            */
+            if (
+                $pembayaran->status !==
+                StatusTransaksiEnum::PENDING
+            ) {
+                return [
+                    'pembayaran' => $pembayaran,
+                    'baru_berhasil' => false,
+                ];
+            }
+
+            $jumlahAktual = isset($payload['paid_amount'])
+                ? round((float) $payload['paid_amount'], 2)
+                : (float) $pembayaran->jumlah_dibayar;
+
+            if ($jumlahAktual <= 0) {
+                throw new \RuntimeException(
+                    'Jumlah pembayaran dari webhook tidak valid.'
+                );
+            }
+
+            /*
+            * PENTING:
+            *
+            * Status BERHASIL dan allocation dilakukan
+            * dalam transaction database yang sama.
+            */
+            $pembayaran->update([
+                'jumlah_dibayar' => $jumlahAktual,
+                'status' => StatusTransaksiEnum::BERHASIL,
                 'payload_webhook' => $payload,
-                'dibayar_pada' => $status === 'PAID' || $status === 'SETTLED' ? now() : null,
+                'dibayar_pada' => now(),
+                'provider_status' => 'paid',
             ]);
-        };
 
-        DB::transaction(function () use ($tagihan, $status, $simpanPembayaran) {
-            $pembayaran = $simpanPembayaran();
+            /*
+            * Kalau allocation gagal, exception akan keluar
+            * dari transaction dan perubahan BERHASIL di atas
+            * ikut di-rollback.
+            */
+            $pembayaran = $this->pembayaranAllocationService
+                ->selesaikanPembayaran($pembayaran);
 
-            if ($status === 'PAID' || $status === 'SETTLED') {
-                if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
-                    return;
-                }
-
-                $tagihan->update([
-                    'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
-                    'dibayar_pada' => $pembayaran->dibayar_pada,
-                ]);
-
-                $layanan = $tagihan->layananInternet;
-                if ($layanan && $tagihan->jumlah_bulan >= 1) {
-                    $layanan->update([
-                        'tanggal_aktif' => $layanan->tanggal_aktif->copy()->addMonths($tagihan->jumlah_bulan),
-                    ]);
-
-                    // Jadwal penagihan dimajukan ke periode pertama yang belum terbayar,
-                    // supaya cron tidak tagih ulang bulan yang sudah dilunasi di muka.
-                    $this->siklusPenagihanService->majukanJadwalSetelahPembayaran($tagihan);
-                }
-
-                PembayaranBerhasil::dispatch($tagihan, $pembayaran);
-            }
-
-            if ($status === 'EXPIRED') {
-                $tagihan->update([
-                    'status_pembayaran' => StatusPembayaranEnum::KEDALUWARSA,
-                    'xendit_invoice_status' => 'expired',
-                ]);
-            }
+            return [
+                'pembayaran' => $pembayaran,
+                'baru_berhasil' => true,
+            ];
         });
 
-        return response()->json(['message' => 'OK']);
+        $pembayaranBerhasil = $hasil['pembayaran'];
+
+        /*
+        * Event dikirim setelah transaction berhasil commit.
+        */
+        if ($hasil['baru_berhasil']) {
+            PembayaranBerhasil::dispatch(
+                $pembayaranBerhasil
+            );
+        }
+
+        return response()->json([
+            'message' => $hasil['baru_berhasil']
+                ? 'Pembayaran berhasil diproses.'
+                : 'Webhook pembayaran sudah pernah diproses.',
+            'data' => $pembayaranBerhasil->fresh([
+                'pelanggan',
+                'alokasiTagihan.tagihan',
+                'mutasiSaldoKredit',
+            ]),
+        ]);
+    }
+
+    private function prosesPembayaranExpired(
+        Pembayaran $pembayaran,
+        array $payload
+    ): JsonResponse {
+        DB::transaction(function () use (
+            $pembayaran,
+            $payload
+        ) {
+            $pembayaran = Pembayaran::query()
+                ->lockForUpdate()
+                ->findOrFail($pembayaran->id);
+
+            /*
+             * Kalau sudah berhasil, webhook EXPIRED yang terlambat
+             * tidak boleh membalikkan transaksi menjadi gagal.
+             */
+            if (
+                $pembayaran->status ===
+                StatusTransaksiEnum::BERHASIL
+            ) {
+                return;
+            }
+
+            $pembayaran->update([
+                'status' => StatusTransaksiEnum::GAGAL,
+
+                'provider_status' => 'expired',
+
+                'payload_webhook' => $payload,
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'Invoice pembayaran kedaluwarsa.',
+        ]);
     }
 }

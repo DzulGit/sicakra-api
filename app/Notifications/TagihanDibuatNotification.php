@@ -44,7 +44,7 @@ class TagihanDibuatNotification extends Notification implements ShouldQueue
                 'paket' => $tagihan->nama_paket_snapshot,
                 'periode' => $tagihan->periode_akhir_bulan,
                 'total' => number_format($tagihan->total_tagihan, 0, ',', '.'),
-                'urlBayar' => $tagihan->xendit_invoice_url,
+                'urlBayar' => "/pelanggan/tagihan/{$tagihan->id}",
             ]);
     }
 }

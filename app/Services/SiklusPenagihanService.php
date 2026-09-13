@@ -127,34 +127,64 @@ class SiklusPenagihanService
     }
 
     /**
-     * Saat tagihan multi-bulan dibayar, majukan jadwal ke periode pertama yang
-     * belum terbayar = periode tagihan + jumlah_bulan.
+     * Sinkronisasi jadwal setelah pembayaran tagihan.
      *
-     * JANGAN memajukan tanggal_mulai_penagihan saat ini dengan jumlah_bulan: cron
-     * sudah memajukan jadwal +1 bulan begitu tagihan dibuat (jadwal sekarang = periode
-     * tagihan + 1). Memajukan lagi akan melewati 1 periode dan pelanggan dapat 1 bulan
-     * gratis. Berpijak ke periode tagihan juga kebal terhadap tagihan manual / telat.
+     * Jadwal hanya boleh bergerak MAJU.
+     *
+     * Pembayaran sebagian tidak memanggil method ini.
+     * Method ini hanya dipanggil ketika sebuah tagihan sudah lunas.
+     *
+     * Contoh:
+     *
+     * Jadwal sekarang : Agustus
+     * Tagihan Mei     : baru dibayar
+     *
+     * Maka jadwal tetap Agustus, bukan kembali ke Juni.
+     *
+     * Jika:
+     * Jadwal sekarang : Juni
+     * Tagihan Mei-Juni dibayar penuh
+     *
+     * Maka jadwal dapat dimajukan ke Juli.
      */
     public function majukanJadwalSetelahPembayaran(Tagihan $tagihan): void
     {
         $layanan = $tagihan->layananInternet;
+
         if (! $layanan) {
             return;
         }
 
-        $periode = Carbon::createFromDate($tagihan->periode_tahun, $tagihan->periode_bulan, 1)
-            ->addMonthsNoOverflow((int) $tagihan->jumlah_bulan);
+        $periodeBerikutnya = Carbon::createFromDate(
+            $tagihan->periode_tahun,
+            $tagihan->periode_bulan,
+            1
+        )->addMonthsNoOverflow(
+            max(1, (int) $tagihan->jumlah_bulan)
+        );
 
-        $tanggal = $this->snapKeBulan($periode, $this->hariDasar($layanan));
+        $tanggalTarget = $this->snapKeBulan(
+            $periodeBerikutnya,
+            $this->hariDasar($layanan)
+        );
 
-        // Tagihan lama yang baru dibayar: jadwal hasil hitungan bisa sudah lewat hari
-        // ini. Gulir maju ke siklus berikutnya supaya cron tidak stuck di tanggal lalu.
-        $hariIni = Carbon::today();
-        while ($tanggal->lt($hariIni)) {
-            $tanggal = $this->siklusBerikutnya($layanan, $tanggal);
+        $tanggalSekarang = $layanan->tanggal_mulai_penagihan
+            ? Carbon::parse($layanan->tanggal_mulai_penagihan)
+            : null;
+
+        /*
+        * Jangan pernah memundurkan jadwal.
+        */
+        if (
+            $tanggalSekarang &&
+            $tanggalTarget->lte($tanggalSekarang)
+        ) {
+            return;
         }
 
-        $layanan->update(['tanggal_mulai_penagihan' => $tanggal->toDateString()]);
+        $layanan->update([
+            'tanggal_mulai_penagihan' => $tanggalTarget->toDateString(),
+        ]);
     }
 
     private function hariDasar(LayananInternet $layanan): int

@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -37,11 +38,16 @@ class ResellerPendapatanTest extends TestCase
             'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
             'total_tagihan' => $nominal,
         ]);
-        Pembayaran::factory()->create([
+        $pembayaran = Pembayaran::factory()->create([
             'tagihan_id' => $tagihan->id,
             'status' => StatusTransaksiEnum::BERHASIL,
             'jumlah_dibayar' => $nominal,
             'dibayar_pada' => now(),
+        ]);
+        PembayaranTagihan::create([
+            "pembayaran_id" => $pembayaran->id,
+            "tagihan_id" => $tagihan->id,
+            "jumlah_dialokasikan" => $nominal,
         ]);
     }
 

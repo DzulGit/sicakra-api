@@ -10,9 +10,11 @@ use App\Events\TagihanDibuat;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
+use App\Models\Pembayaran;
 use App\Services\GenerateTagihanService;
 use App\Services\SiklusPenagihanService;
 use App\Services\XenditInvoiceService;
+use App\Services\PembayaranAllocationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +25,7 @@ class TagihanController extends Controller
         private readonly GenerateTagihanService $generateTagihanService,
         private readonly SiklusPenagihanService $siklusPenagihanService,
         private readonly XenditInvoiceService $xenditInvoiceService,
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
     private function pastikanMilikReseller(Tagihan $tagihan, Request $request): void
@@ -152,85 +155,129 @@ class TagihanController extends Controller
     {
         $this->pastikanMilikReseller($tagihan, $request);
 
-        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
-            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        $tagihan->loadMissing('layananInternet.pelanggan');
+
+        $pelanggan = $tagihan->layananInternet?->pelanggan;
+
+        if (! $pelanggan) {
+            return response()->json([
+                'message' => 'Pelanggan tagihan tidak ditemukan.',
+            ], 422);
         }
 
-        $validated = $request->validate(['jumlah_bulan' => 'sometimes|integer|min:1|max:12']);
-        $jumlahBulan = $validated['jumlah_bulan'] ?? $tagihan->jumlah_bulan;
+        $sisaTagihan = $this->hitungSisaTagihan($tagihan);
+
+        if ($sisaTagihan <= 0) {
+            return response()->json([
+                'message' => 'Tagihan sudah lunas.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'jumlah_dibayar' => [
+                'required',
+                'numeric',
+                'gt:0',
+            ],
+        ]);
+
+        $jumlahDibayar = round(
+            (float) $validated['jumlah_dibayar'],
+            2
+        );
+
+        if ($jumlahDibayar <= 0) {
+            return response()->json([
+                'message' => 'Jumlah pembayaran harus lebih besar dari 0.',
+            ], 422);
+        }
+
         $admin = $request->user();
 
-        $tagihanBaru = DB::transaction(function () use ($tagihan, $jumlahBulan, $admin) {
-            $tagihan->update([
-                'jumlah_bulan' => $jumlahBulan,
-                'total_tagihan' => $tagihan->harga_snapshot * $jumlahBulan,
-            ]);
+        $pembayaran = $this->pembayaranAllocationService
+            ->buatPembayaranTunai(
+                $pelanggan,
+                $jumlahDibayar,
+                [
+                    'metode_pembayaran' => 'tunai',
+                    'dibayar_oleh' => $admin->nama_lengkap,
+                ]
+            );
 
-            $pembayaran = $tagihan->pembayaran()->create([
-                'metode_pembayaran' => 'tunai',
-                'dibayar_oleh' => $admin->nama_lengkap, // Dicatat bahwa reseller yang menerima pembayaran tunai
-                'jumlah_dibayar' => $tagihan->total_tagihan,
-                'status' => StatusTransaksiEnum::BERHASIL,
-                'dibayar_pada' => now(),
-            ]);
-
-            $tagihan->update([
-                'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
-                'dibayar_pada' => $pembayaran->dibayar_pada,
-                'xendit_invoice_status' => 'paid',
-            ]);
-
-            $layanan = $tagihan->layananInternet;
-            if ($layanan) {
-                $layanan->update([
-                    'tanggal_aktif' => $layanan->tanggal_aktif->copy()->addMonths($jumlahBulan),
-                ]);
-                $this->siklusPenagihanService->majukanJadwalSetelahPembayaran($tagihan);
-            }
-
-            PembayaranBerhasil::dispatch($tagihan, $pembayaran);
-
-            return $tagihan;
-        });
+        PembayaranBerhasil::dispatch($pembayaran);
 
         return response()->json([
-            'message' => 'Pembayaran tunai diterima. Tagihan lunas.',
-            'data' => $tagihanBaru->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
+            'message' => 'Pembayaran tunai berhasil diproses.',
+            'data' => $pembayaran->fresh([
+                'pelanggan',
+                'alokasiTagihan.tagihan.layananInternet.paketInternet',
+                'mutasiSaldoKredit',
+            ]),
         ]);
     }
+
+    private function hitungSisaTagihan(Tagihan $tagihan): float { return $this->pembayaranAllocationService->hitungSisaTagihan($tagihan); }
 
     public function perbaruiLink(Request $request, Tagihan $tagihan)
     {
         $this->pastikanMilikReseller($tagihan, $request);
 
-        if ($tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
-            return response()->json(['message' => 'Tagihan sudah dibayar.'], 422);
+        $tagihan->loadMissing('layananInternet.pelanggan');
+
+        $pelanggan = $tagihan->layananInternet?->pelanggan;
+
+        if (! $pelanggan) {
+            return response()->json([
+                'message' => 'Pelanggan tagihan tidak ditemukan.',
+            ], 422);
         }
 
-        $tagihan->update([
-            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
-            'xendit_invoice_id' => null,
-            'xendit_external_id' => null,
-            'xendit_invoice_url' => null,
-            'xendit_invoice_status' => 'expired',
-            'xendit_invoice_expires_at' => null,
-            'xendit_invoice_retry_count' => $tagihan->xendit_invoice_retry_count + 1,
+        $sisaTagihan = $this->hitungSisaTagihan($tagihan);
+
+        if ($sisaTagihan <= 0) {
+            return response()->json([
+                'message' => 'Tagihan sudah lunas.',
+            ], 422);
+        }
+
+        $pembayaran = \App\Models\Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'xendit',
+            'provider' => 'xendit',
+            'jumlah_dibayar' => $sisaTagihan,
+            'status' => StatusTransaksiEnum::PENDING,
         ]);
 
-        $body = $this->xenditInvoiceService->buatInvoice($tagihan->fresh(), durasiHari: 7);
+        try {
+            $body = $this->xenditInvoiceService->buatInvoice(
+                $pembayaran,
+                durasiHari: 7,
+            );
 
-        $tagihan->update([
-            'xendit_invoice_id' => $body['id'],
-            'xendit_external_id' => $body['external_id'] ?? null,
-            'xendit_invoice_url' => $body['invoice_url'],
-            'xendit_invoice_status' => 'active',
-            'xendit_invoice_expires_at' => $body['expiry_date'] ?? null,
-        ]);
+            $pembayaran->update([
+                'provider_reference' => $body['id'] ?? null,
+                'provider_external_id' => $body['external_id'] ?? null,
+                'payment_url' => $body['invoice_url'] ?? null,
+                'provider_status' => $body['status'] ?? 'active',
+                'provider_expires_at' => $body['expiry_date'] ?? null,
+            ]);
 
-        return response()->json([
-            'message' => 'Link pembayaran berhasil diperbarui.',
-            'data' => $tagihan->fresh(['layananInternet.paketInternet', 'layananInternet.pelanggan', 'pembayaran']),
-        ]);
+            return response()->json([
+                'message' => 'Link pembayaran berhasil diperbarui.',
+                'data' => $pembayaran->fresh([
+                    'pelanggan',
+                    'alokasiTagihan.tagihan',
+                ]),
+            ]);
+        } catch (\Throwable $e) {
+            $pembayaran->update([
+                'status' => StatusTransaksiEnum::GAGAL,
+                'provider_status' => 'failed',
+            ]);
+
+            throw $e;
+        }
     }
 
     /**

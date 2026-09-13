@@ -249,6 +249,10 @@ Route::prefix('pelanggan')->group(function () {
         Route::get('layanan/{layanan}', [LayananSayaController::class, 'show']);
 
         Route::get('tagihan', [TagihanSayaController::class, 'index']);
+        Route::post(
+            'tagihan/bayar-gabungan',
+            [TagihanSayaController::class, 'bayarGabungan']
+        );
         Route::get('tagihan/{tagihan}', [TagihanSayaController::class, 'show']);
         Route::post('tagihan/{tagihan}/bayar', [TagihanSayaController::class, 'bayar']);
         Route::post('tagihan/{tagihan}/regenerate-invoice', [TagihanSayaController::class, 'regenerateInvoice']);

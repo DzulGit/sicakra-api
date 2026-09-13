@@ -20,6 +20,8 @@ class Admin extends Authenticatable
         'nama_lengkap',
         'email',
         'email_baru',
+        'otp_code',
+        'otp_expires_at',
         'foto_profil',
         'password',
         'peran',
@@ -35,6 +37,7 @@ class Admin extends Authenticatable
         'peran' => PeranAdminEnum::class,
         'status_aktif' => 'boolean',
         'password' => 'hashed',
+        'otp_expires_at' => 'datetime',
     ];
 
     public function dibuatOleh(): BelongsTo

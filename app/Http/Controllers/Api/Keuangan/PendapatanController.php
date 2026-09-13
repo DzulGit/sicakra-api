@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -60,8 +61,8 @@ class PendapatanController extends Controller
         $query = $this->pembayaranQuery($request);
 
         $stats = [
-            'total_pendapatan' => $this->rupiah((clone $query)->sum('jumlah_dibayar')),
-            'jumlah_pembayaran' => (clone $query)->count(),
+            'total_pendapatan' => $this->rupiah($query->sum('pembayaran_tagihan.jumlah_dialokasikan')),
+            'jumlah_pembayaran' => (clone $query)->distinct('pembayaran.id')->count('pembayaran.id'),
             'tagihan_dibuat' => $this->tagihanQuery($request)->count(),
         ];
 
@@ -77,18 +78,29 @@ class PendapatanController extends Controller
 
         $tren = $this->hitungTren(clone $query, $request);
 
-        $pembayaranTerbaru = (clone $query)
-            ->with('tagihan.layananInternet.pelanggan')
+        $pembayaranIds = (clone $query)
+            ->select('pembayaran.id')
+            ->distinct();
+
+        $pembayaranTerbaru = Pembayaran::query()
+            ->whereIn('id', $pembayaranIds)
+            ->with([
+                'pelanggan',
+                'alokasiTagihan.tagihan',
+            ])
             ->latest('dibayar_pada')
             ->take(10)
             ->get()
-            ->map(fn ($item) => [
-                'id' => $item->id,
-                'nomor_tagihan' => $item->tagihan?->nomor_tagihan,
-                'pelanggan' => $item->tagihan?->layananInternet?->pelanggan?->nama_lengkap,
-                'jumlah' => $this->rupiah($item->jumlah_dibayar),
-                'status' => StatusTransaksiEnum::BERHASIL->value,
-                'waktu' => $item->dibayar_pada?->format('d M Y H:i'),
+            ->map(fn (Pembayaran $pembayaran) => [
+                'id' => $pembayaran->id,
+                'nomor_tagihan' => $pembayaran->alokasiTagihan
+                    ->pluck('tagihan.nomor_tagihan')
+                    ->filter()
+                    ->join(', '),
+                'pelanggan' => $pembayaran->pelanggan?->nama_lengkap,
+                'jumlah' => $this->rupiah($pembayaran->jumlah_dibayar),
+                'status' => $pembayaran->status->value,
+                'waktu' => $pembayaran->dibayar_pada?->format('d M Y H:i'),
             ]);
 
         return response()->json([
@@ -179,12 +191,17 @@ class PendapatanController extends Controller
 
         // 3. Ambil tagihan untuk tahun + bulan yang diminta
         $tagihanQuery = Tagihan::query()
-            ->select('id', 'layanan_internet_id', 'periode_bulan', 'periode_tahun', 'status_pembayaran', 'total_tagihan')
+            ->select(
+                'id',
+                'layanan_internet_id',
+                'periode_bulan',
+                'periode_tahun',
+                'status_pembayaran',
+                'total_tagihan'
+            )
             ->where('periode_tahun', $tahun)
-            ->whereIn('periode_bulan', $bulanList)
-            ->whereHas('layananInternet.pelanggan', function (Builder $q) {
-                $q->whereNull('reseller_id');
-            });
+            ->whereIn('periode_bulan', $bulanList);
+
         $tagihanQuery->whereHas('layananInternet.pelanggan', function (Builder $q) {
             if ($this->resellerId === null) {
                 $q->whereNull('reseller_id');
@@ -209,19 +226,28 @@ class PendapatanController extends Controller
         $tagihanIds = $semuaTagihan->pluck('id')->values();
         $pembayaranMap = [];
         if ($tagihanIds->isNotEmpty()) {
-            $pembayaranBerhasil = Pembayaran::query()
-                ->select('tagihan_id', 'jumlah_dibayar', 'dibayar_pada')
-                ->where('status', StatusTransaksiEnum::BERHASIL)
+            $pembayaranBerhasil = PembayaranTagihan::query()
+                ->with('pembayaran')
+                ->whereHas('pembayaran', function (Builder $q) {
+                    $q->where('status', StatusTransaksiEnum::BERHASIL);
+                })
                 ->whereIn('tagihan_id', $tagihanIds)
                 ->get()
                 ->groupBy('tagihan_id');
 
-            foreach ($pembayaranBerhasil as $tagihanId => $bayar) {
-                $totalBayar = $bayar->sum('jumlah_dibayar');
-                $tanggalBayar = $bayar->max('dibayar_pada');
+            foreach ($pembayaranBerhasil as $tagihanId => $alokasi) {
+                $totalBayar = $alokasi->sum('jumlah_dialokasikan');
+
+                $tanggalBayar = $alokasi
+                    ->map(fn (PembayaranTagihan $item) => $item->pembayaran?->dibayar_pada)
+                    ->filter()
+                    ->max();
+
                 $pembayaranMap[$tagihanId] = [
                     'nominal' => (float) $totalBayar,
-                    'tanggal' => $tanggalBayar instanceof Carbon ? $tanggalBayar->format('d-m-Y H:i:s') : '',
+                    'tanggal' => $tanggalBayar instanceof Carbon
+                        ? $tanggalBayar->format('d-m-Y H:i:s')
+                        : '',
                 ];
             }
         }
@@ -297,11 +323,17 @@ class PendapatanController extends Controller
 
     private function pembayaranQuery(Request $request): Builder
     {
-        $query = Pembayaran::query()
-            ->where('status', StatusTransaksiEnum::BERHASIL)
-            ->whereHas('tagihan.layananInternet.pelanggan', function (Builder $q) {
-                $q->whereNull('reseller_id');
-            });
+        $query = PembayaranTagihan::query()
+            ->join('pembayaran', 'pembayaran_tagihan.pembayaran_id', '=', 'pembayaran.id')
+            ->join('tagihan', 'pembayaran_tagihan.tagihan_id', '=', 'tagihan.id')
+            ->join('layanan_internet', 'tagihan.layanan_internet_id', '=', 'layanan_internet.id')
+            ->join('pelanggan', 'layanan_internet.pelanggan_id', '=', 'pelanggan.id')
+            ->where('pembayaran.status', StatusTransaksiEnum::BERHASIL)
+            ->when(
+                $this->resellerId === null,
+                fn ($q) => $q->whereNull('pelanggan.reseller_id'),
+                fn ($q) => $q->where('pelanggan.reseller_id', $this->resellerId)
+            );
 
         $this->applyDateFilter($query, $request);
         $this->applyPelangganFilter($query, $request);
@@ -313,12 +345,12 @@ class PendapatanController extends Controller
     {
         $query = Tagihan::query()
             ->whereHas('layananInternet.pelanggan', function (Builder $q) {
-                $q->whereNull('reseller_id');
-            })
-            ->when($this->resellerId, fn ($q) => $q->whereHas(
-                'layananInternet.pelanggan',
-                fn ($qq) => $qq->where('reseller_id', $this->resellerId)
-            ));
+                if ($this->resellerId === null) {
+                    $q->whereNull('reseller_id');
+                } else {
+                    $q->where('reseller_id', $this->resellerId);
+                }
+            });
 
         $tahun = $request->integer('tahun', now()->year);
         $query->where('periode_tahun', $tahun);
@@ -345,13 +377,13 @@ class PendapatanController extends Controller
     private function applyDateFilter(Builder $query, Request $request): void
     {
         $tahun = $request->integer('tahun', now()->year);
-        $query->whereYear('dibayar_pada', $tahun);
+        $query->whereYear('pembayaran.dibayar_pada', $tahun);
 
         $bulanList = $this->parseBulanArray($request);
         if ($bulanList !== null) {
             $query->where(function (Builder $q) use ($bulanList) {
                 foreach ($bulanList as $b) {
-                    $q->orWhereMonth('dibayar_pada', $b);
+                    $q->orWhereMonth('pembayaran.dibayar_pada', $b);
                 }
             });
         }
@@ -359,14 +391,8 @@ class PendapatanController extends Controller
 
     private function applyPelangganFilter(Builder $query, Request $request): void
     {
-        $query->whereHas('tagihan.layananInternet.pelanggan', function (Builder $q) {
-            $q->whereNull('reseller_id');
-        });
-
         if ($this->resellerId !== null) {
-            $query->whereHas('tagihan.layananInternet.pelanggan', function (Builder $q) {
-                $q->where('reseller_id', $this->resellerId);
-            });
+            $query->where('pelanggan.reseller_id', $this->resellerId);
         }
 
         $pelangganIds = $request->input('pelanggan_ids');
@@ -374,9 +400,7 @@ class PendapatanController extends Controller
         if (is_array($pelangganIds) && count($pelangganIds) > 0) {
             $ids = array_map('intval', $pelangganIds);
 
-            $query->whereHas('tagihan.layananInternet', function (Builder $q) use ($ids) {
-                $q->whereIn('pelanggan_id', $ids);
-            });
+            $query->whereIn('pelanggan.id', $ids);
         }
     }
 
@@ -414,11 +438,13 @@ class PendapatanController extends Controller
     private function trenHarian(Builder $query, int $tahun, int $bulan): array
     {
         $rows = (clone $query)
-            ->whereMonth('dibayar_pada', $bulan)
-            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
+            ->whereMonth('pembayaran.dibayar_pada', $bulan)
+            ->selectRaw(
+                'date(pembayaran.dibayar_pada) as tanggal,
+                SUM(pembayaran_tagihan.jumlah_dialokasikan) as total'
+            )
             ->groupBy('tanggal')
-            ->get()
-            ->mapWithKeys(fn ($item) => [(string) $item->tanggal => (float) $item->total]);
+            ->get();
 
         $jumlahHari = now()->setDate($tahun, $bulan, 1)->daysInMonth;
         $tren = [];
@@ -433,7 +459,10 @@ class PendapatanController extends Controller
     private function trenBulananFiltered(Builder $query, int $tahun, array $bulanList): array
     {
         $rows = (clone $query)
-            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
+            ->selectRaw(
+                'date(pembayaran.dibayar_pada) as tanggal,
+                SUM(pembayaran_tagihan.jumlah_dialokasikan) as total'
+            )
             ->groupBy('tanggal')
             ->get();
 
@@ -454,7 +483,10 @@ class PendapatanController extends Controller
     private function trenBulanan(Builder $query, int $tahun): array
     {
         $rows = (clone $query)
-            ->selectRaw('date(dibayar_pada) as tanggal, SUM(jumlah_dibayar) as total')
+            ->selectRaw(
+                'date(pembayaran.dibayar_pada) as tanggal,
+                SUM(pembayaran_tagihan.jumlah_dialokasikan) as total'
+            )
             ->groupBy('tanggal')
             ->get();
 
@@ -504,7 +536,6 @@ class PendapatanController extends Controller
         return match ($status) {
             StatusPembayaranEnum::BELUM_BAYAR => 'Belum Bayar',
             StatusPembayaranEnum::SUDAH_BAYAR => 'Sudah Bayar',
-            StatusPembayaranEnum::KEDALUWARSA => 'Kedaluwarsa',
             default => '-',
         };
     }
