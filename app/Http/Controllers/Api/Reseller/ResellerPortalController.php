@@ -7,6 +7,7 @@ use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Enums\TipePaketEnum;
+use App\Filters\PelangganFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Reseller\DaftarkanPelangganRequest;
 use App\Models\Admin;
@@ -16,6 +17,7 @@ use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\Tagihan;
 use App\Services\GeneratorNomorService;
+use App\Services\PembayaranAllocationService;
 use App\Services\SiklusPenagihanService;
 use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
@@ -26,6 +28,7 @@ class ResellerPortalController extends Controller
     public function __construct(
         private readonly GeneratorNomorService $generatorNomor,
         private readonly SiklusPenagihanService $siklusPenagihanService,
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
     /** Ringkasan dashbor reseller — hanya data pelanggan miliknya. */
@@ -90,21 +93,24 @@ class ResellerPortalController extends Controller
         ]);
     }
 
-    /** Daftar pelanggan milik reseller. */
-    public function pelangganIndex(Request $request)
+    /** Daftar pelanggan milik reseller (dukung filter `cari` untuk pencarian). */
+    public function pelangganIndex(PelangganFilter $filter, Request $request)
     {
         /** @var Admin $reseller */
         $reseller = $request->user();
 
-        $pelanggan = $reseller->pelanggan()
+        $query = Pelanggan::query()
+            ->where('reseller_id', $reseller->id)
             ->with([
                 'layananInternet.paketInternet',
                 'layananInternet.tagihan',
-            ])
-            ->latest()
-            ->paginate(20);
+            ]);
 
-        return response()->json(['data' => $pelanggan]);
+        $filter->apply($query);
+
+        return response()->json([
+            'data' => $query->latest()->paginate(20),
+        ]);
     }
 
     /** Detail pelanggan — 404 bila bukan milik reseller (tidak bocor eksistensi). */
@@ -122,6 +128,22 @@ class ResellerPortalController extends Controller
             'layananInternet.tagihan',
             'permohonanLayanan.paketInternet',
         ]);
+
+        // Info keuangan per tagihan (sama seperti menu keuangan): sisa & riwayat.
+        foreach ($pelanggan->layananInternet as $layanan) {
+            foreach ($layanan->tagihan as $tagihan) {
+                $detail = $this->pembayaranAllocationService->detailTagihan($tagihan);
+
+                foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $kunci) {
+                    $tagihan->setAttribute($kunci, $detail[$kunci]);
+                }
+
+                $tagihan->setAttribute(
+                    'riwayat_pembayaran',
+                    $this->pembayaranAllocationService->riwayatPembayaranTagihan($tagihan),
+                );
+            }
+        }
 
         return response()->json(['data' => $pelanggan]);
     }
