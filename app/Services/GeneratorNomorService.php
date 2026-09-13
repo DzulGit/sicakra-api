@@ -8,28 +8,53 @@ use Illuminate\Support\Facades\DB;
 class GeneratorNomorService
 {
     /**
-     * Generate nomor unik berformat {prefix}{6 digit berurutan}, mis. PMH000001.
+     * Generate nomor unik berformat {prefix}{6 digit berurutan}.
      *
-     * Dibungkus lockForUpdate() + DB Transaction agar aman dari race condition
-     * saat ada 2 request submit bersamaan (mis. 2 pendaftaran masuk di detik yang sama).
+     * Contoh:
+     * INV000001
+     * INV000002
      *
-     * @param  class-string<Model>  $modelClass
+     * Sequence dihitung berdasarkan nomor dengan prefix yang sama,
+     * bukan berdasarkan ID record terakhir.
+     *
+     * @param class-string<Model> $modelClass
      */
-    public function generate(string $modelClass, string $kolom, string $prefix, bool $acak = false): string
-    {
+    public function generate(
+        string $modelClass,
+        string $kolom,
+        string $prefix,
+        bool $acak = false
+    ): string {
         return DB::transaction(function () use ($modelClass, $kolom, $prefix, $acak) {
             if ($acak) {
-                // ponytail: serangkaian bilangan acak 6 digit tanpa pola, validasi
-                // unik dengan query; cukup aman untuk kebutuhan sekarang.
                 do {
-                    $nomor = $prefix.random_int(100000, 999999);
-                } while ($modelClass::lockForUpdate()->where($kolom, $nomor)->exists());
+                    $nomor = $prefix . random_int(100000, 999999);
+                } while (
+                    $modelClass::lockForUpdate()
+                        ->where($kolom, $nomor)
+                        ->exists()
+                );
 
                 return $nomor;
             }
 
-            $terakhir = $modelClass::lockForUpdate()
-                ->whereNotNull($kolom)
+            $query = $modelClass::query()
+                ->whereNotNull($kolom);
+
+            if (DB::connection()->getDriverName() === 'pgsql') {
+                $query->whereRaw(
+                    $kolom . " ~ ?",
+                    ['^' . preg_quote($prefix, '/') . '[0-9]{6}$']
+                );
+            } else {
+                $query->whereRaw(
+                    $kolom . " GLOB ?",
+                    [$prefix . '[0-9][0-9][0-9][0-9][0-9][0-9]']
+                );
+            }
+
+            $terakhir = $query
+                ->lockForUpdate()
                 ->orderByDesc('id')
                 ->first();
 
@@ -37,7 +62,12 @@ class GeneratorNomorService
                 ? ((int) substr($terakhir->{$kolom}, strlen($prefix))) + 1
                 : 1;
 
-            return $prefix.str_pad((string) $urutan, 6, '0', STR_PAD_LEFT);
+            return $prefix . str_pad(
+                (string) $urutan,
+                6,
+                '0',
+                STR_PAD_LEFT
+            );
         });
     }
 }
