@@ -255,7 +255,6 @@ class DemoSeeder extends Seeder
             'password_sudah_dibuat' => true,
             'tanggal_tagihan' => 20,
             'foto_ktp' => 'ktp/dummy.jpg',
-            'foto_selfie_ktp' => 'selfie-ktp/dummy.jpg',
             'reseller_id' => $reseller?->id,
         ]);
     }

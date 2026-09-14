@@ -180,13 +180,6 @@ class ResellerPortalController extends Controller
                 )
                 : null;
 
-            $pathSelfie = $request->hasFile('foto_selfie_ktp')
-                ? KompresiGambar::simpanKeWebp(
-                    $request->file('foto_selfie_ktp'),
-                    'selfie-ktp'
-                )
-                : null;
-
             /*
             * Identitas pelanggan reseller.
             *
@@ -203,7 +196,6 @@ class ResellerPortalController extends Controller
                 'nomor_hp' => $data['nomor_hp'],
                 'email' => $data['email'] ?? null,
                 'foto_ktp' => $pathKtp,
-                'foto_selfie_ktp' => $pathSelfie,
 
                 'reseller_id' => $reseller->id,
 

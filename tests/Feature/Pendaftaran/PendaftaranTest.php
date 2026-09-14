@@ -33,7 +33,6 @@ class PendaftaranTest extends TestCase
             'tipe_paket' => 'reguler',
             'paket_internet_id' => $paket->id,
             'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
-            'foto_selfie_ktp' => UploadedFile::fake()->image('selfie.jpg'),
         ]);
 
         $response->assertCreated();
@@ -62,7 +61,6 @@ class PendaftaranTest extends TestCase
             'kecepatan_custom_mbps' => 100,
             'catatan_custom' => 'Untuk kebutuhan kantor kecil',
             'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
-            'foto_selfie_ktp' => UploadedFile::fake()->image('selfie.jpg'),
         ]);
 
         $response->assertCreated();
@@ -93,7 +91,6 @@ class PendaftaranTest extends TestCase
             'nama_paket_custom' => 'Custom 100mbps',
             'kecepatan_custom_mbps' => 100,
             'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
-            'foto_selfie_ktp' => UploadedFile::fake()->image('selfie.jpg'),
         ]);
 
         $response->assertStatus(422)->assertJsonValidationErrors('nik');
@@ -121,7 +118,7 @@ class PendaftaranTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('pelanggan', ['nik' => '1111222233334444', 'foto_selfie_ktp' => null]);
+        $this->assertDatabaseHas('pelanggan', ['nik' => '1111222233334444']);
     }
 
     public function test_pendaftaran_gagal_tanpa_foto_ktp(): void
@@ -142,7 +139,6 @@ class PendaftaranTest extends TestCase
             'tipe_paket' => 'custom',
             'nama_paket_custom' => 'Custom',
             'kecepatan_custom_mbps' => 50,
-            'foto_selfie_ktp' => UploadedFile::fake()->image('selfie.jpg'),
         ]);
 
         $response->assertStatus(422)->assertJsonValidationErrors('foto_ktp');

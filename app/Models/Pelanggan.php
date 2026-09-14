@@ -26,7 +26,6 @@ class Pelanggan extends Authenticatable
         'password_sudah_dibuat',
         'tanggal_tagihan',
         'foto_ktp',
-        'foto_selfie_ktp',
         'foto_profil',
         'reseller_id',
     ];
@@ -74,11 +73,6 @@ class Pelanggan extends Authenticatable
     public function getFotoKtpUrlAttribute(): ?string
     {
         return $this->foto_ktp ? Storage::url($this->foto_ktp) : null;
-    }
-
-    public function getFotoSelfieKtpUrlAttribute(): ?string
-    {
-        return $this->foto_selfie_ktp ? Storage::url($this->foto_selfie_ktp) : null;
     }
 
     public function getFotoProfilUrlAttribute(): ?string

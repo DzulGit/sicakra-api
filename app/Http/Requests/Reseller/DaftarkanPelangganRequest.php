@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Reseller;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class DaftarkanPelangganRequest extends FormRequest
 {
@@ -13,11 +14,19 @@ class DaftarkanPelangganRequest extends FormRequest
 
     public function rules(): array
     {
+        $resellerId = $this->user()->id;
+
         return [
             'nama_lengkap' => ['required', 'string', 'max:255'],
-            'nik' => ['required', 'string', 'size:16', 'unique:pelanggan,nik'],
-            'nomor_hp' => ['required', 'string', 'max:20', 'unique:pelanggan,nomor_hp'],
-            'email' => ['nullable', 'email', 'unique:pelanggan,email'],
+            'nik' => [
+                'required', 'string', 'size:16',
+                Rule::unique('pelanggan', 'nik')->where('reseller_id', $resellerId),
+            ],
+            'nomor_hp' => [
+                'required', 'string', 'max:20',
+                Rule::unique('pelanggan', 'nomor_hp')->where('reseller_id', $resellerId),
+            ],
+            'email' => ['nullable', 'email'],
 
             'alamat_pemasangan' => ['required', 'string'],
             'detail_alamat' => ['nullable', 'string'],
@@ -29,16 +38,14 @@ class DaftarkanPelangganRequest extends FormRequest
             'paket_internet_id' => ['required', 'exists:paket_internet,id'],
 
             'foto_ktp' => ['nullable', 'image', 'max:2048'],
-            'foto_selfie_ktp' => ['nullable', 'image', 'max:2048'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'nik.unique' => 'NIK sudah terdaftar.',
-            'nomor_hp.unique' => 'Nomor HP sudah terdaftar.',
-            'email.unique' => 'Email sudah terdaftar.',
+            'nik.unique' => 'NIK sudah terdaftar di pelanggan Anda.',
+            'nomor_hp.unique' => 'Nomor HP sudah terdaftar di pelanggan Anda.',
         ];
     }
 }

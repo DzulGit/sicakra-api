@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Operasional;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class BuatPelangganRequest extends FormRequest
 {
@@ -15,9 +16,18 @@ class BuatPelangganRequest extends FormRequest
     {
         return [
             'nama_lengkap' => ['required', 'string', 'max:255'],
-            'nik' => ['required', 'string', 'size:16', 'unique:pelanggan,nik'],
-            'nomor_hp' => ['required', 'string', 'max:20', 'unique:pelanggan,nomor_hp'],
-            'email' => ['required', 'email', 'unique:pelanggan,email'],
+            'nik' => [
+                'required', 'string', 'size:16',
+                Rule::unique('pelanggan', 'nik')->whereNull('reseller_id'),
+            ],
+            'nomor_hp' => [
+                'required', 'string', 'max:20',
+                Rule::unique('pelanggan', 'nomor_hp')->whereNull('reseller_id'),
+            ],
+            'email' => [
+                'required', 'email',
+                Rule::unique('pelanggan', 'email')->whereNull('reseller_id'),
+            ],
 
             'alamat_pemasangan' => ['required', 'string'],
             'detail_alamat' => ['nullable', 'string'],
@@ -33,7 +43,6 @@ class BuatPelangganRequest extends FormRequest
             'catatan_custom' => ['nullable', 'string'],
 
             'foto_ktp' => ['required', 'image', 'max:2048'],
-            'foto_selfie_ktp' => ['nullable', 'image', 'max:2048'],
         ];
     }
 

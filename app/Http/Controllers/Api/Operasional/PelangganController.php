@@ -51,9 +51,6 @@ class PelangganController extends Controller
             $pathKtp = $request->hasFile('foto_ktp')
                 ? KompresiGambar::simpanKeWebp($request->file('foto_ktp'), 'ktp')
                 : null;
-            $pathSelfie = $request->hasFile('foto_selfie_ktp')
-                ? KompresiGambar::simpanKeWebp($request->file('foto_selfie_ktp'), 'selfie-ktp')
-                : null;
 
             $pelanggan = Pelanggan::create([
                 'nama_lengkap' => $data['nama_lengkap'],
@@ -61,7 +58,6 @@ class PelangganController extends Controller
                 'nomor_hp' => $data['nomor_hp'],
                 'email' => $data['email'] ?? null,
                 'foto_ktp' => $pathKtp,
-                'foto_selfie_ktp' => $pathSelfie,
                 'password_sudah_dibuat' => false,
                 'reseller_id' => $adalahReseller ? $aktor->id : null,
             ]);

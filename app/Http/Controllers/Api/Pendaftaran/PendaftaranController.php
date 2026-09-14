@@ -24,7 +24,6 @@ class PendaftaranController extends Controller
     {
         $data = $request->validated();
         $data['foto_ktp'] = $request->file('foto_ktp');
-        $data['foto_selfie_ktp'] = $request->file('foto_selfie_ktp');
 
         $permohonan = $this->pendaftaranService->daftar($data);
 

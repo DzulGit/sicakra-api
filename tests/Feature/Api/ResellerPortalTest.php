@@ -153,4 +153,53 @@ class ResellerPortalTest extends TestCase
         $this->assertEquals(StatusLayananEnum::AKTIF, $layanan->status);
         $this->assertNull($layanan->permohonan_layanan_id);
     }
+
+    public function test_reseller_boleh_pakai_nik_yang_sudah_dipakai_reseller_lain_atau_sistem_utama(): void
+    {
+        $resellerA = Admin::factory()->reseller()->create();
+        $resellerB = Admin::factory()->reseller()->create();
+        $paketA = PaketInternet::factory()->create(['reseller_id' => $resellerA->id]);
+        $token = $resellerA->createToken('test')->plainTextToken;
+
+        // NIK yang sama sudah dipakai pelanggan sistem utama & pelanggan reseller lain.
+        Pelanggan::factory()->create(['nik' => '1111222233334444', 'nomor_hp' => '081100000001', 'reseller_id' => null]);
+        Pelanggan::factory()->create(['nik' => '1111222233334444', 'nomor_hp' => '081100000002', 'reseller_id' => $resellerB->id]);
+
+        // Reseller A tetap boleh mendaftarkan NIK yang sama (pool masing-masing).
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/reseller/pelanggan', [
+                'nama_lengkap' => 'Sama NIK',
+                'nik' => '1111222233334444',
+                'nomor_hp' => '081100000003',
+                'email' => 'sama.nik@example.com',
+                'alamat_pemasangan' => 'Jl. Boleh No. 1',
+                'tipe_paket' => 'reguler',
+                'paket_internet_id' => $paketA->id,
+                'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
+            ])
+            ->assertCreated();
+    }
+
+    public function test_reseller_tidak_boleh_pakai_nik_yang_sudah_dipakai_di_poolnya_sendiri(): void
+    {
+        $reseller = Admin::factory()->reseller()->create();
+        $paket = PaketInternet::factory()->create(['reseller_id' => $reseller->id]);
+        $token = $reseller->createToken('test')->plainTextToken;
+
+        Pelanggan::factory()->create(['nik' => '1111222233334444', 'nomor_hp' => '081100000001', 'reseller_id' => $reseller->id]);
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/reseller/pelanggan', [
+                'nama_lengkap' => 'Duplikat NIK',
+                'nik' => '1111222233334444',
+                'nomor_hp' => '081100000002',
+                'email' => 'duplikat@example.com',
+                'alamat_pemasangan' => 'Jl. Duplikat No. 1',
+                'tipe_paket' => 'reguler',
+                'paket_internet_id' => $paket->id,
+                'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('nik');
+    }
 }

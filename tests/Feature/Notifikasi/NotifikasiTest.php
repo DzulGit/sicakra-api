@@ -201,7 +201,6 @@ class NotifikasiTest extends TestCase
             'tipe_paket' => 'reguler',
             'paket_internet_id' => $paket->id,
             'foto_ktp' => UploadedFile::fake()->image('ktp.jpg'),
-            'foto_selfie_ktp' => UploadedFile::fake()->image('selfie.jpg'),
         ];
     }
 
