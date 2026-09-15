@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api\Keuangan;
 
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
-use App\Exports\PendapatanMatrixExport;
+use App\Exports\LaporanPendapatanMultiSheetExport;
 use App\Http\Controllers\Controller;
 use App\Models\LayananInternet;
+use App\Models\MutasiSaldoKredit;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\PembayaranTagihan;
 use App\Models\Tagihan;
+use App\Services\PembayaranAllocationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -19,6 +21,11 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class PendapatanController extends Controller
 {
+    public function __construct(
+        private PembayaranAllocationService $pembayaranAllocationService,
+    ) {
+    }
+
     /** Scope reseller (null = admin keuangan melihat semua). */
     protected ?int $resellerId = null;
 
@@ -114,33 +121,54 @@ class PendapatanController extends Controller
         ]);
     }
 
-    /** Laporan pendapatan PDF (matriks). */
+    /** Laporan pendapatan PDF (A4 portrait, multi-bagian). */
     public function report(Request $request)
     {
-        $matrix = $this->buildMatrix($request);
+        $ringkasan = $this->buildRingkasanData($request);
+        $transaksi = $this->buildTransaksiData($request);
+        $alokasi = $this->buildAlokasiData($request);
+        $saldoKredit = $this->buildSaldoKreditData($request);
+
+        $ringkasanTotal = [
+            'total_tagihan' => array_sum(array_column($ringkasan, 'total_tagihan')),
+            'pembayaran_masuk' => array_sum(array_column($transaksi, 'jumlah_dibayar')),
+            'dialokasikan' => array_sum(array_column($alokasi, 'jumlah_dialokasikan')),
+            'kredit_masuk' => array_sum(array_column(
+                array_filter($saldoKredit, fn ($m) => $m['jenis'] === 'Kredit'),
+                'jumlah'
+            )),
+            'kredit_digunakan' => array_sum(array_column(
+                array_filter($saldoKredit, fn ($m) => $m['jenis'] === 'Pemakaian'),
+                'jumlah'
+            )),
+            'tagihan_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] === 'Sudah Bayar')),
+            'tagihan_belum_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] !== 'Sudah Bayar')),
+        ];
 
         $pdf = Pdf::loadView('pdf.report-pendapatan', [
             'labelPeriode' => $this->labelPeriode($request),
-            'matrix' => $matrix['data'],
-            'kolomBulan' => $matrix['kolomBulan'],
-            'total' => $matrix['total'],
-        ]);
+            'generatedAt' => Carbon::now()->timezone('Asia/Jakarta')->format('d M Y, H:i'),
+            'ringkasan' => $ringkasan,
+            'transaksi' => $transaksi,
+            'alokasi' => $alokasi,
+            'saldoKredit' => $saldoKredit,
+            'ringkasanTotal' => $ringkasanTotal,
+        ])->setPaper('a4', 'portrait');
 
         $slug = str($this->labelPeriode($request))->slug()->toString();
 
         return $pdf->stream("laporan-pendapatan-{$slug}.pdf");
     }
 
-    /** Laporan pendapatan Excel (matriks). */
+    /** Laporan pendapatan Excel (multi-sheet). */
     public function reportExcel(Request $request)
     {
-        $matrix = $this->buildMatrix($request);
-
-        $file = Excel::raw(new PendapatanMatrixExport(
-            $matrix['data'],
-            $matrix['kolomBulan'],
+        $file = Excel::raw(new LaporanPendapatanMultiSheetExport(
+            $this->buildRingkasanData($request),
+            $this->buildTransaksiData($request),
+            $this->buildAlokasiData($request),
+            $this->buildSaldoKreditData($request),
             $this->labelPeriode($request),
-            $matrix['total'],
         ), \Maatwebsite\Excel\Excel::XLSX);
 
         $slug = str($this->labelPeriode($request))->slug()->toString();
@@ -317,6 +345,223 @@ class PendapatanController extends Controller
             'kolomBulan' => $bulanList,
             'total' => $total,
         ];
+    }
+
+    // ─── Multi-Sheet Builders ──────────────────────────────────────
+
+    private function buildRingkasanData(Request $request): array
+    {
+        $tagihan = $this->tagihanQuery($request)
+            ->with([
+                'layananInternet.pelanggan',
+                'alokasiPembayaran.pembayaran',
+            ])
+            ->orderBy('periode_tahun')
+            ->orderBy('periode_bulan')
+            ->get();
+
+        $rows = [];
+
+        foreach ($tagihan as $t) {
+            $pelanggan = $t->layananInternet->pelanggan;
+
+            $alokasiBerhasil = $t->alokasiPembayaran
+                ->filter(fn (PembayaranTagihan $a) => $a->pembayaran?->status === StatusTransaksiEnum::BERHASIL);
+
+            $dibayarPembayaran = (float) $alokasiBerhasil
+                ->filter(fn (PembayaranTagihan $a) => ! $a->pembayaran?->pakai_saldo_kredit)
+                ->sum('jumlah_dialokasikan');
+            $dibayarKredit = (float) $alokasiBerhasil
+                ->filter(fn (PembayaranTagihan $a) => (bool) $a->pembayaran?->pakai_saldo_kredit)
+                ->sum('jumlah_dialokasikan');
+
+            $totalTagihan = (float) $t->total_tagihan;
+            $totalTerbayar = $dibayarPembayaran + $dibayarKredit;
+
+            $rows[] = [
+                'nomor_tagihan' => $t->nomor_tagihan,
+                'nomor_pelanggan' => $pelanggan?->nomor_pelanggan ?? '',
+                'pelanggan' => $pelanggan?->nama_lengkap ?? '',
+                'periode' => trim((self::NAMA_BULAN[$t->periode_bulan] ?? '').' '.$t->periode_tahun),
+                'total_tagihan' => $totalTagihan,
+                'dibayar_pembayaran' => $dibayarPembayaran,
+                'dibayar_kredit' => $dibayarKredit,
+                'total_terbayar' => $totalTerbayar,
+                'sisa' => max(0, $totalTagihan - $totalTerbayar),
+                'status' => $this->labelStatus($t->status_pembayaran),
+                'tanggal_lunas' => $t->dibayar_pada?->format('d-m-Y') ?? '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function buildTransaksiData(Request $request): array
+    {
+        $query = Pembayaran::query()
+            ->with('pelanggan')
+            ->where('status', StatusTransaksiEnum::BERHASIL)
+            ->when(
+                $this->resellerId === null,
+                fn ($q) => $q->whereHas('pelanggan', fn (Builder $q2) => $q2->whereNull('reseller_id')),
+                fn ($q) => $q->whereHas('pelanggan', fn (Builder $q2) => $q2->where('reseller_id', $this->resellerId))
+            );
+
+        $tahun = $request->integer('tahun', now()->year);
+        $query->whereYear('dibayar_pada', $tahun);
+
+        $bulanList = $this->parseBulanArray($request);
+        if ($bulanList !== null) {
+            $query->where(function (Builder $q) use ($bulanList) {
+                foreach ($bulanList as $b) {
+                    $q->orWhereMonth('dibayar_pada', $b);
+                }
+            });
+        }
+
+        $pelangganIds = $request->input('pelanggan_ids');
+        if (is_array($pelangganIds) && count($pelangganIds) > 0) {
+            $query->whereIn('pelanggan_id', array_map('intval', $pelangganIds));
+        }
+
+        $pembayaranList = $query->orderBy('dibayar_pada')->get();
+
+        $rows = [];
+
+        foreach ($pembayaranList as $p) {
+            $rows[] = [
+                'waktu' => $p->dibayar_pada?->format('d-m-Y H:i:s') ?? '',
+                'nomor_pembayaran' => $this->pembayaranAllocationService->nomorPembayaran($p),
+                'pelanggan' => $p->pelanggan?->nama_lengkap ?? '',
+                'metode' => $p->metode_pembayaran ?? '',
+                'provider' => $p->provider ?? '',
+                'jumlah_dibayar' => (float) $p->jumlah_dibayar,
+                'status' => $p->status->value,
+                'referensi' => $p->provider_reference ?? $p->referensi_xendit ?? $p->provider_external_id ?? '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function buildAlokasiData(Request $request): array
+    {
+        $query = PembayaranTagihan::query()
+            ->with([
+                'pembayaran.pelanggan',
+                'tagihan.layananInternet.pelanggan',
+            ])
+            ->whereHas('pembayaran', function (Builder $q) {
+                $q->where('status', StatusTransaksiEnum::BERHASIL);
+            })
+            ->when(
+                $this->resellerId === null,
+                fn ($q) => $q->whereHas('pembayaran.pelanggan', fn (Builder $q2) => $q2->whereNull('reseller_id')),
+                fn ($q) => $q->whereHas('pembayaran.pelanggan', fn (Builder $q2) => $q2->where('reseller_id', $this->resellerId))
+            );
+
+        $tahun = $request->integer('tahun', now()->year);
+        $query->whereHas('pembayaran', fn (Builder $q) => $q->whereYear('dibayar_pada', $tahun));
+
+        $bulanList = $this->parseBulanArray($request);
+        if ($bulanList !== null) {
+            $query->whereHas('pembayaran', function (Builder $q) use ($bulanList) {
+                $q->where(function (Builder $q2) use ($bulanList) {
+                    foreach ($bulanList as $b) {
+                        $q2->orWhereMonth('dibayar_pada', $b);
+                    }
+                });
+            });
+        }
+
+        $pelangganIds = $request->input('pelanggan_ids');
+        if (is_array($pelangganIds) && count($pelangganIds) > 0) {
+            $query->whereHas('tagihan.layananInternet', fn (Builder $q) => $q->whereIn('pelanggan_id', array_map('intval', $pelangganIds)));
+        }
+
+        $alokasi = $query->get()->sortBy(fn (PembayaranTagihan $a) => $a->pembayaran?->dibayar_pada);
+
+        $rows = [];
+        $runningSisa = [];
+
+        foreach ($alokasi as $a) {
+            $tagihan = $a->tagihan;
+            $pembayaran = $a->pembayaran;
+
+            $runningSisa[$a->tagihan_id] = max(
+                0,
+                ($runningSisa[$a->tagihan_id] ?? (float) ($tagihan?->total_tagihan ?? 0)) - (float) $a->jumlah_dialokasikan
+            );
+
+            $rows[] = [
+                'waktu' => $pembayaran?->dibayar_pada?->format('d-m-Y H:i:s') ?? '',
+                'nomor_pembayaran' => $this->pembayaranAllocationService->nomorPembayaran($pembayaran),
+                'nomor_tagihan' => $tagihan?->nomor_tagihan ?? '',
+                'pelanggan' => $pembayaran?->pelanggan?->nama_lengkap ?? '',
+                'periode' => $tagihan ? trim((self::NAMA_BULAN[$tagihan->periode_bulan] ?? '').' '.$tagihan->periode_tahun) : '',
+                'jumlah_dialokasikan' => (float) $a->jumlah_dialokasikan,
+                'sumber' => $pembayaran?->pakai_saldo_kredit ? 'Saldo Kredit' : 'Pembayaran',
+                'sisa_tagihan' => $runningSisa[$a->tagihan_id],
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function buildSaldoKreditData(Request $request): array
+    {
+        $query = MutasiSaldoKredit::query()
+            ->with(['pelanggan', 'pembayaran', 'tagihan'])
+            ->when(
+                $this->resellerId === null,
+                fn ($q) => $q->whereHas('pelanggan', fn (Builder $q2) => $q2->whereNull('reseller_id')),
+                fn ($q) => $q->whereHas('pelanggan', fn (Builder $q2) => $q2->where('reseller_id', $this->resellerId))
+            );
+
+        $tahun = $request->integer('tahun', now()->year);
+        $query->whereYear('created_at', $tahun);
+
+        $bulanList = $this->parseBulanArray($request);
+        if ($bulanList !== null) {
+            $query->where(function (Builder $q) use ($bulanList) {
+                foreach ($bulanList as $b) {
+                    $q->orWhereMonth('created_at', $b);
+                }
+            });
+        }
+
+        $pelangganIds = $request->input('pelanggan_ids');
+        if (is_array($pelangganIds) && count($pelangganIds) > 0) {
+            $query->whereIn('pelanggan_id', array_map('intval', $pelangganIds));
+        }
+
+        $mutasi = $query->orderBy('created_at')->get();
+
+        $rows = [];
+        $runningSaldo = [];
+
+        foreach ($mutasi as $m) {
+            $jumlah = (float) $m->jumlah;
+            $plgId = $m->pelanggan_id;
+            $runningSaldo[$plgId] = round(($runningSaldo[$plgId] ?? 0) + ($m->jenis === 'kredit' ? $jumlah : -$jumlah), 2);
+
+            $keterangan = array_filter([
+                $m->keterangan,
+                $m->pembayaran ? 'Pembayaran '.$this->pembayaranAllocationService->nomorPembayaran($m->pembayaran) : null,
+                $m->tagihan ? 'Tagihan '.$m->tagihan->nomor_tagihan : null,
+            ]);
+
+            $rows[] = [
+                'waktu' => $m->created_at?->format('d-m-Y H:i:s') ?? '',
+                'pelanggan' => $m->pelanggan?->nama_lengkap ?? '',
+                'jenis' => ucfirst((string) $m->jenis),
+                'jumlah' => $jumlah,
+                'sisa_saldo' => $runningSaldo[$plgId],
+                'keterangan' => trim(implode(' | ', $keterangan)),
+            ];
+        }
+
+        return $rows;
     }
 
     // ─── Query Builders ────────────────────────────────────────────
