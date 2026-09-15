@@ -21,8 +21,8 @@ class DatabaseSeeder extends Seeder
             PaketInternetSeeder::class,
             PelangganSeeder::class,
             DemoSeeder::class,
-            // Reseller seed HARUS setelah DemoSeeder karena akun reseller
-            // (reseller@sicakra.com) diciptakan oleh DemoSeeder.
+            // Reseller seed HARUS setelah PelangganSeeder karena akun reseller
+            // (reseller@sicakra.com) diciptakan oleh PelangganSeeder.
             ResellerPaketInternetSeeder::class,
         ]);
     }

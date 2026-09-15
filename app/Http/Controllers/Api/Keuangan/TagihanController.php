@@ -65,7 +65,7 @@ class TagihanController extends Controller
         $detail = $this->pembayaranAllocationService
             ->detailTagihan($tagihan);
 
-        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $key) {
+        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status_tampilan', 'tanggal_lunas'] as $key) {
             $tagihan->setAttribute($key, $detail[$key]);
         }
 
@@ -77,6 +77,12 @@ class TagihanController extends Controller
                 ->filter()
                 ->values()
                 ->all()
+        );
+
+        $tagihan->setAttribute(
+            'timeline_pembayaran',
+            $this->pembayaranAllocationService
+                ->timelinePembayaranTagihan($tagihan)
         );
 
         return response()->json(['data' => $tagihan]);

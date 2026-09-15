@@ -2,704 +2,206 @@
 
 namespace Database\Seeders;
 
-use App\Enums\HasilKerjaEnum;
-use App\Enums\JenisPermohonanEnum;
 use App\Enums\PeranAdminEnum;
 use App\Enums\StatusLaporanEnum;
-use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
-use App\Enums\StatusPerangkatEnum;
 use App\Enums\StatusPermohonanEnum;
 use App\Enums\StatusTransaksiEnum;
-use App\Enums\TipePaketEnum;
 use App\Models\Admin;
-use App\Models\JadwalKerja;
 use App\Models\LaporanKendala;
 use App\Models\LayananInternet;
-use App\Models\PaketInternet;
+use App\Models\MutasiSaldoKredit;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\PembayaranTagihan;
-use App\Models\Perangkat;
 use App\Models\PermohonanLayanan;
-use App\Models\MutasiSaldoKredit;
-use App\Models\RiwayatStatusPermohonan;
 use App\Models\Tagihan;
-use App\Models\TimTeknisi;
 use App\Notifications\LaporanKendalaBaruNotification;
 use App\Notifications\PembayaranTagihanNotification;
 use App\Notifications\PendaftarBaruNotification;
 use App\Services\GenerateTagihanService;
 use App\Services\GeneratorNomorService;
+use App\Services\PembayaranAllocationService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
- * DemoSeeder — data presentasi ringkas (11 pelanggan) yang mencakup hampir
- * semua state bisnis Sicakra. Fokus skenario:
- *  1. Lunas via tunai
- *  2. Lunas via Xendit (multi-bulan)
- *  3. Belum bayar (tunggakan sederhana)
- *  4. Cicilan parsial (sisa tagihan > 0)
- *  5. Pembayaran gabungan (satu bayar, dua tagihan)
- *  6. Deposit (kelebihan bayar -> saldo kredit)
- *  7. Saldo kredit digunakan utk melunasi tagihan
- *  8. Multi-layanan (reguler + custom)
- *  9-11. Milik reseller: lunas, belum bayar, & pelanggan baru (tanpa tagihan)
+ * DemoSeeder — skenario tagihan & pembayaran. TIDAK membuat pelanggan/layanan
+ * (itu master data di PelangganSeeder); hanya menata tagihan, pembayaran,
+ * saldo kredit via GenerateTagihanService & PembayaranAllocationService agar
+ * tidak menduplikasi logika bisnis. Waktu pembayaran di-backdate supaya
+ * riwayat keuangan terlihat realistis.
  *
- * Selain itu: permohonan pending (operasional), tiket kendala, jadwal kerja,
- * serta notifikasi unread untuk badge merah.
+ * Skala nilai dikunci dari harga layanan: besar bayar dihitung dari
+ * total_tagihan hasil service, bukan harga hardcoded.
  */
 class DemoSeeder extends Seeder
 {
-    private const DEMO_ADMIN_NAME = 'Admin Utama Demo';
+    private GenerateTagihanService $generateTagihanService;
 
-    private const ALAMAT = [
-        'Jalan Parangtritis, Ngestiharjo, Kasihan, Bantul, Daerah Istimewa Yogyakarta, 55182, Indonesia',
-        'Jalan Kaliurang, Caturtunggal, Depok, Sleman, Daerah Istimewa Yogyakarta, 55281, Indonesia',
-        'Jalan Monjali, Sinduadi, Mlati, Sleman, Daerah Istimewa Yogyakarta, 55284, Indonesia',
-        'Jalan Wonosari, Potorono, Banguntapan, Bantul, Daerah Istimewa Yogyakarta, 55182, Indonesia',
-        'Jalan Godean, Trihanggo, Gamping, Sleman, Daerah Istimewa Yogyakarta, 55291, Indonesia',
-        'Jalan Magelang, Sendangadi, Mlati, Sleman, Daerah Istimewa Yogyakarta, 55285, Indonesia',
-    ];
-
-    private GeneratorNomorService $generator;
-
-    private Admin $adminUtama;
-
-    private Admin $operasional;
+    private PembayaranAllocationService $allocationService;
 
     private Admin $keuangan;
 
-    private Admin $reseller;
-
-    private array $teknisi = [];
-
-    private array $tim = [];
+    private Admin $adminUtama;
 
     public function run(): void
     {
-        if (Admin::where('nama_lengkap', self::DEMO_ADMIN_NAME)->exists()) {
-            $this->command->warn('Data demo sudah pernah di-seed, dilewati.');
+        if (Pembayaran::exists()) {
+            $this->command->warn('Data pembayaran demo sudah ada, dilewati.');
 
             return;
         }
 
-        $this->generator = new GeneratorNomorService;
+        $this->generateTagihanService = app(GenerateTagihanService::class);
+        $this->allocationService = app(PembayaranAllocationService::class);
+        $this->keuangan = Admin::where('email', 'keuangan@sicakra.com')->firstOrFail();
+        $this->adminUtama = Admin::where('email', 'admin@sicakra.com')->firstOrFail();
 
-        $this->command->info('Phase 1 — Admin & Tim Teknisi');
-        $this->seedAdminDanTim();
+        $this->command->info('Skenario tagihan & pembayaran (15 pelanggan)');
+        $this->seedSkenario();
 
-        $this->command->info('Phase 2 — Paket Internet (master)');
-        $this->call(PaketInternetSeeder::class);
-
-        $this->command->info('Phase 3 — Pelanggan, Layanan, Tagihan & Pembayaran (11 skenario)');
-        $this->seedPelanggan();
-
-        $this->command->info('Phase 4 — Permohonan tambahan & Laporan Kendala');
-        $this->seedPermohonanTambahan();
-        $this->seedLaporanKendala();
-
-        $this->command->info('Phase 5 — Notifikasi unread ke Admin Utama');
+        $this->command->info('Notifikasi unread untuk badge merah');
         $this->seedNotifikasi();
 
-        $this->command->info('DemoSeeder selesai. Pelanggan dapat login dengan username & password "password123".');
+        $this->command->info('DemoSeeder selesai.');
     }
 
-    // ------------------------------------------------------------------
-    // Phase 1 — Admin + Tim
-    // ------------------------------------------------------------------
-    private function seedAdminDanTim(): void
+    private function seedSkenario(): void
     {
-        $this->adminUtama = Admin::updateOrCreate(['email' => 'admin@sicakra.com'], [
-            'nama_lengkap' => self::DEMO_ADMIN_NAME,
-            'password' => 'Admins1cakra',
-            'peran' => PeranAdminEnum::SUPER_ADMIN,
-            'status_aktif' => true,
-        ]);
-
-        $this->operasional = Admin::updateOrCreate(['email' => 'operasional@sicakra.com'], [
-            'nama_lengkap' => 'Anwara Operasional',
-            'password' => 'password123',
-            'peran' => PeranAdminEnum::OPERASIONAL,
-            'status_aktif' => true,
-        ]);
-
-        $this->keuangan = Admin::updateOrCreate(['email' => 'keuangan@sicakra.com'], [
-            'nama_lengkap' => 'Kirana Keuangan',
-            'password' => 'password123',
-            'peran' => PeranAdminEnum::KEUANGAN,
-            'status_aktif' => true,
-        ]);
-
-        $this->reseller = Admin::updateOrCreate(['email' => 'reseller@sicakra.com'], [
-            'nama_lengkap' => 'Rina Reseller',
-            'password' => 'password123',
-            'peran' => PeranAdminEnum::RESELLER,
-            'status_aktif' => true,
-        ]);
-
-        $namaTeknisi = ['Taufik Teknisi', 'Rizky Teknisi', 'Ahmad Teknisi', 'Gilang Teknisi'];
-        foreach ($namaTeknisi as $i => $nama) {
-            $this->teknisi[] = Admin::updateOrCreate(['email' => 'teknisi'.($i + 1).'@sicakra.com'], [
-                'nama_lengkap' => $nama,
-                'password' => 'password123',
-                'peran' => PeranAdminEnum::TEKNISI,
-                'status_aktif' => true,
-            ]);
-        }
-
-        $susunanTim = [
-            ['nama_tim' => 'Tim Sakura', 'anggota' => [$this->teknisi[0], $this->teknisi[1]]],
-            ['nama_tim' => 'Tim Meranti', 'anggota' => [$this->teknisi[2], $this->teknisi[3]]],
-        ];
-        foreach ($susunanTim as $data) {
-            $tim = TimTeknisi::firstOrCreate(['nama_tim' => $data['nama_tim']], ['status_aktif' => true]);
-            $tim->anggota()->sync(array_map(fn ($t) => $t->id, $data['anggota']));
-            $this->tim[] = $tim;
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 3 — Pelanggan & skenario billing
-    // ------------------------------------------------------------------
-    private function seedPelanggan(): void
-    {
-        $silver = PaketInternet::where('nama_paket', 'Paket Silver')->first();
-        $gold = PaketInternet::where('nama_paket', 'Paket Gold')->first();
-        $bronze = PaketInternet::where('nama_paket', 'Paket Bronze')->first();
-        $platinum = PaketInternet::where('nama_paket', 'Paket Platinum')->first();
-
-        // 1. Lunas via tunai.
-        $budi = $this->buatPelanggan('Budi Santoso', 'budisantoso', '081200000001', '340101010100001', null);
-        $layananBudi = $this->buatLayanan($budi, $silver, Carbon::today()->subMonths(4));
-        $tagihanBudi = $this->buatTagihan($layananBudi, 1);
-        $this->tunai($budi, $tagihanBudi, $tagihanBudi->total_tagihan, Carbon::today()->subDay());
-
-        // 2. Lunas via Xendit, tagihan multi-bulan (2 bulan).
-        $siti = $this->buatPelanggan('Siti Nurhaliza', 'siti', '081200000002', '340202020200002', null);
-        $layananSiti = $this->buatLayanan($siti, $gold, Carbon::today()->subMonths(6));
-        $tagihanSiti = $this->buatTagihan($layananSiti, 2);
-        $this->xendit($siti, [$tagihanSiti], $tagihanSiti->total_tagihan, Carbon::today()->subDay());
-
-        // 3. Tunggakan sederhana (belum bayar).
-        $agus = $this->buatPelanggan('Agus Wibowo', 'agus', '081200000003', '340303030300003', null);
-        $layananAgus = $this->buatLayanan($agus, $silver, Carbon::today()->subMonths(3));
-        $this->buatTagihan($layananAgus, 1);
-
-        // 4. Cicilan parsial (sisa tagihan > 0).
-        $dewi = $this->buatPelanggan('Dewi Lestari', 'dewi', '081200000004', '340404040400004', null);
-        $layananDewi = $this->buatLayanan($dewi, $gold, Carbon::today()->subMonths(5));
-        $tagihanDewi = $this->buatTagihan($layananDewi, 1);
-        $this->tunai($dewi, $tagihanDewi, round((float) $tagihanDewi->total_tagihan / 2, 2), Carbon::today()->subDays(2));
-
-        // 5. Pembayaran gabungan: 2 tagihan dibayar sekali.
-        $wahyu = $this->buatPelanggan('Wahyu Nugroho', 'wahyu', '081200000005', '340505050500005', null);
-        $layananWahyu = $this->buatLayanan($wahyu, $platinum, Carbon::today()->subMonths(6));
-        $tagihan1 = $this->buatTagihan($layananWahyu, 2, Carbon::today()->subMonths(2));
-        $tagihan2 = $this->buatTagihan($layananWahyu, 1);
-        $this->xendit(
-            $wahyu,
-            [$tagihan1, $tagihan2],
-            round((float) $tagihan1->total_tagihan + (float) $tagihan2->total_tagihan, 2),
-            Carbon::today()->subDay(),
+        // A. Lunas via tunai — 2 tagihan berurutan dibayar gabungan sekaligus.
+        $budi = $this->pelanggan('budi');
+        $layananBudi = $this->layanan($budi);
+        $tagihanJul = $this->buatTagihan($layananBudi, $this->periode(-2));
+        $tagihanAgu = $this->buatTagihan($layananBudi, $this->periode(-1));
+        $this->bayarTunai(
+            $budi,
+            round((float) $tagihanJul->total_tagihan + (float) $tagihanAgu->total_tagihan, 2),
+            [$tagihanJul->id, $tagihanAgu->id],
+            $this->waktu(5, 11, 20, 5),
         );
 
-        // 6. Deposit: kelebihan bayar -> saldo kredit 50k.
-        $sri = $this->buatPelanggan('Sri Rahayu', 'sri', '081200000006', '340606060600006', null);
-        $layananSri = $this->buatLayanan($sri, $bronze, Carbon::today()->subMonths(2));
-        $tagihanSri = $this->buatTagihan($layananSri, 1);
-        $this->tunai($sri, $tagihanSri, (float) $tagihanSri->total_tagihan + 50000, Carbon::today()->subDays(3));
+        // B. Lunas via Xendit — tagihan multi-bulan (2 bulan).
+        $siti = $this->pelanggan('siti');
+        $layananSiti = $this->layanan($siti);
+        $tagihanSiti = $this->buatTagihan($layananSiti, $this->periode(-3), 2);
+        $this->bayarXendit(
+            $siti,
+            round((float) $tagihanSiti->total_tagihan, 2),
+            [$tagihanSiti->id],
+            $this->waktu(8, 16, 5, 42),
+        );
 
-        // 7. Saldo kredit dipakai melunasi tagihan (sisa saldo 50k).
-        $joko = $this->buatPelanggan('Joko Susilo', 'joko', '081200000007', '340707070700007', null);
-        $layananJoko = $this->buatLayanan($joko, $silver, Carbon::today()->subMonths(4));
-        $this->deposit($joko, 300000, Carbon::today()->subMonths(2));
-        $tagihanJoko = $this->buatTagihan($layananJoko, 1, Carbon::today()->subMonths(1));
-        $this->pakaiSaldoKredit($joko, $tagihanJoko, 250000);
+        // C. Belum bayar sederhana.
+        $agus = $this->pelanggan('agus');
+        $this->buatTagihan($this->layanan($agus), $this->periode(0));
 
-        // 8. Multi-layanan: reguler (lunas) + custom (belum bayar).
-        $rina = $this->buatPelanggan('Rina Marlina', 'rina', '081200000008', '340808080800008', null);
-        $layananRina1 = $this->buatLayanan($rina, $silver, Carbon::today()->subMonths(10));
-        $tagihanRina1 = $this->buatTagihan($layananRina1, 1);
-        $this->tunai($rina, $tagihanRina1, $tagihanRina1->total_tagihan, Carbon::today()->subDays(4));
-        $layananRina2 = $this->buatLayananCustom($rina, 'Paket Kantor 50', 50, 400000, Carbon::today()->subMonths(6));
-        $this->buatTagihan($layananRina2, 1);
+        // D. Cicilan parsial — 3 x 1/3 nominal hingga lunas.
+        $dewi = $this->pelanggan('dewi');
+        $tagihanDewi = $this->buatTagihan($this->layanan($dewi), $this->periode(-1));
+        $cicilanDewi = round((float) $tagihanDewi->total_tagihan / 3, 2);
+        $this->bayarTunai($dewi, $cicilanDewi, [$tagihanDewi->id], $this->waktu(20, 9, 15, 32));
+        $this->bayarTunai($dewi, $cicilanDewi, [$tagihanDewi->id], $this->waktu(12, 13, 42, 10));
+        $this->bayarTunai($dewi, $cicilanDewi, [$tagihanDewi->id], $this->waktu(4, 10, 22, 48));
 
-        // 9-11. Milik reseller.
-        $putra = $this->buatPelanggan('Putra Madani', 'putra', '081200000009', '340909090900009', $this->reseller);
-        $layananPutra = $this->buatLayanan($putra, $silver, Carbon::today()->subMonths(3));
-        $tagihanPutra = $this->buatTagihan($layananPutra, 1);
-        $this->tunai($putra, $tagihanPutra, (float) $tagihanPutra->total_tagihan + 50000, Carbon::today()->subDay());
+        // E. Dibayar sebagian — sisa tagihan > 0.
+        $wahyu = $this->pelanggan('wahyu');
+        $tagihanWahyu = $this->buatTagihan($this->layanan($wahyu), $this->periode(0));
+        $cicilanWahyu = round((float) $tagihanWahyu->total_tagihan / 3, 2);
+        $this->bayarTunai($wahyu, $cicilanWahyu, [$tagihanWahyu->id], $this->waktu(10, 9, 5, 0));
+        $this->bayarTunai($wahyu, $cicilanWahyu, [$tagihanWahyu->id], $this->waktu(2, 14, 30, 0));
 
-        $ilham = $this->buatPelanggan('Ilham Nusantara', 'ilham', '081200000010', '341010101000010', $this->reseller);
-        $layananIlham = $this->buatLayanan($ilham, $gold, Carbon::today()->subMonths(2));
-        $this->buatTagihan($layananIlham, 1);
+        // F. Pembayaran gabungan antar-layanan: 2 dari 3 tagihan dibayar sekali.
+        $nia = $this->pelanggan('nia');
+        $layananNiaC = $this->layanan($nia, 2);
+        $tagihanNiaA = $this->buatTagihan($this->layanan($nia, 0), $this->periode(-2));
+        $tagihanNiaB = $this->buatTagihan($this->layanan($nia, 1), $this->periode(-1));
+        $tagihanNiaC = $this->buatTagihan($layananNiaC, $this->periode(0));
+        $this->bayarTunai(
+            $nia,
+            round((float) $tagihanNiaA->total_tagihan + (float) $tagihanNiaB->total_tagihan, 2),
+            [$tagihanNiaA->id, $tagihanNiaB->id],
+            $this->waktu(3, 13, 25, 12),
+        );
+        // Draft tagihan bulan depan (belum_diterbitkan) untuk layanan C.
+        $this->buatTagihanDraft($layananNiaC, $this->periode(1));
 
-        // Pelanggan baru reseller: layanan aktif, belum ada tagihan.
-        $sulton = $this->buatPelanggan('Sulton Baru', 'sulton', '081200000011', '341111111100011', $this->reseller);
-        $this->buatLayanan($sulton, $silver, Carbon::today()->subMonths(1));
+        // G. Deposit: kelebihan bayar -> saldo kredit 100k.
+        $sri = $this->pelanggan('sri');
+        $tagihanSri = $this->buatTagihan($this->layanan($sri), $this->periode(0));
+        $this->bayarTunai(
+            $sri,
+            round((float) $tagihanSri->total_tagihan + 100000, 2),
+            [$tagihanSri->id],
+            $this->waktu(6, 9, 40, 8),
+        );
 
-        // Draft tagihan bulan berikutnya — siap diterbitkan dari menu keuangan/reseller.
-        // Terbitkan hanya mengizinkan layanan yang SUDAH punya tagihan sebelumnya,
-        // jadi pelanggan baru (Sulton) sengaja TIDAK dapat draft agar alur
-        // "buat tagihan pertama" tetap bisa dites.
-        $bulanDepan = Carbon::today()->month % 12 + 1;
-        $tahunDepan = Carbon::today()->month === 12 ? Carbon::today()->year + 1 : Carbon::today()->year;
-        foreach ([$layananBudi, $layananAgus, $layananRina2, $layananPutra, $layananIlham] as $layanan) {
-            $this->buatDraftTagihan($layanan, $bulanDepan, $tahunDepan);
-        }
+        // H. Deposit 100k (bronze 150k dibayar 250k), lalu dipakai melunasi
+        //    sebagian tagihan 300k -> sisa 200k.
+        $joko = $this->pelanggan('joko');
+        $tagihanBronze = $this->buatTagihan($this->layanan($joko, 0), $this->periode(-3));
+        $tagihanToko = $this->buatTagihan($this->layanan($joko, 1), $this->periode(0));
+        $this->bayarTunai(
+            $joko,
+            round((float) $tagihanBronze->total_tagihan + 100000, 2),
+            [$tagihanBronze->id],
+            $this->waktu(18, 10, 15, 0),
+        );
+        $this->pakaiSaldoKredit($joko, [$tagihanToko->id], $this->waktu(1, 11, 0, 0));
+
+        // I. Deposit 300k (100k dibayar 400k), lunas tagihan berikutnya via
+        //    saldo kredit, sisa saldo 200k + tagihan draft layanan kedua.
+        $rina = $this->pelanggan('rina');
+        $tagihanRina1 = $this->buatTagihan($this->layanan($rina, 0), $this->periode(-3));
+        $tagihanRina2 = $this->buatTagihan($this->layanan($rina, 0), $this->periode(0));
+        $layananRinaCadangan = $this->layanan($rina, 1);
+        $this->bayarTunai(
+            $rina,
+            round((float) $tagihanRina1->total_tagihan + 300000, 2),
+            [$tagihanRina1->id],
+            $this->waktu(22, 9, 30, 0),
+        );
+        $this->pakaiSaldoKredit($rina, [$tagihanRina2->id], $this->waktu(2, 10, 0, 0));
+        $this->buatTagihanDraft($layananRinaCadangan, $this->periode(1));
+
+        // J. Pembayaran provider xendit PENDING & GAGAL — tagihan tetap belum bayar.
+        $fajar = $this->pelanggan('fajar');
+        $tagihanFajar = $this->buatTagihan($this->layanan($fajar), $this->periode(0));
+        $this->buatPembayaranGagal($fajar, (float) $tagihanFajar->total_tagihan, $this->waktu(7, 8, 10, 0));
+        $this->buatPembayaranPending($fajar, (float) $tagihanFajar->total_tagihan, $this->waktu(1, 9, 15, 0));
+
+        // K. Titik langganan dengan kelebihan bayar 50k (saldo kredit 50k).
+        $putra = $this->pelanggan('putra');
+        $tagihanPutra = $this->buatTagihan($this->layanan($putra), $this->periode(0));
+        $this->bayarTunai(
+            $putra,
+            round((float) $tagihanPutra->total_tagihan + 50000, 2),
+            [$tagihanPutra->id],
+            $this->waktu(4, 15, 45, 0),
+        );
+
+        // L. Belum bayar di bawah reseller.
+        $ilham = $this->pelanggan('ilham');
+        $this->buatTagihan($this->layanan($ilham), $this->periode(0));
+
+        // M. Lunas + kelebihan bayar 50k di bawah reseller.
+        $bagas = $this->pelanggan('bagas');
+        $tagihanBagas = $this->buatTagihan($this->layanan($bagas), $this->periode(0));
+        $this->bayarTunai(
+            $bagas,
+            round((float) $tagihanBagas->total_tagihan + 50000, 2),
+            [$tagihanBagas->id],
+            $this->waktu(9, 14, 10, 0),
+        );
+
+        // N. Pelanggan baru (sulton, hendra): layanan aktif, tanpa tagihan.
+        //    Dibuat oleh PelangganSeeder — cukup hadir di sini tanpa aksi.
     }
 
-    private function buatDraftTagihan(LayananInternet $layanan, int $bulan, int $tahun): void
-    {
-        app(GenerateTagihanService::class)->generateDraftUntukLayanan($layanan, $bulan, $tahun);
-    }
-
-    private function buatPelanggan(string $nama, string $username, string $nomorHp, string $nik, ?Admin $reseller = null): Pelanggan
-    {
-        return Pelanggan::create([
-            'nomor_pelanggan' => $this->generator->generate(Pelanggan::class, 'nomor_pelanggan', 'PLG', true),
-            'username' => $username,
-            'nama_lengkap' => $nama,
-            'nik' => $nik,
-            'nomor_hp' => $nomorHp,
-            'email' => $username.'@sicakra-demo.com',
-            'password' => 'password123',
-            'password_sudah_dibuat' => true,
-            'tanggal_tagihan' => 20,
-            'foto_ktp' => 'ktp/dummy.jpg',
-            'reseller_id' => $reseller?->id,
-        ]);
-    }
-
-    private function buatPermohonanDikonversi(Pelanggan $pelanggan, ?PaketInternet $paket): PermohonanLayanan
-    {
-        $alamat = self::ALAMAT[array_rand(self::ALAMAT)];
-
-        $permohonan = PermohonanLayanan::create([
-            'nomor_permohonan' => $this->generator->generate(PermohonanLayanan::class, 'nomor_permohonan', 'PMH'),
-            'pelanggan_id' => $pelanggan->id,
-            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'paket_internet_id' => $paket?->id,
-            'tipe_paket' => TipePaketEnum::REGULER,
-            'alamat_pemasangan' => $alamat,
-            'detail_alamat' => 'Pagar hitam depan warung Madura',
-            'latitude' => -7.79,
-            'longitude' => 110.36,
-            'status' => StatusPermohonanEnum::DIKONVERSI,
-            'diproses_oleh' => $this->operasional->id,
-        ]);
-
-        foreach ([
-            [null, StatusPermohonanEnum::MENUNGGU_VERIFIKASI, 'Permohonan diajukan.'],
-            [StatusPermohonanEnum::MENUNGGU_VERIFIKASI, StatusPermohonanEnum::DITERIMA, 'Data verifikasi sesuai.'],
-            [StatusPermohonanEnum::DITERIMA, StatusPermohonanEnum::DIJADWALKAN, 'Pekerjaan dijadwalkan.'],
-            [StatusPermohonanEnum::DIJADWALKAN, StatusPermohonanEnum::DIKONVERSI, 'Pemasangan selesai, layanan aktif.'],
-        ] as [$sebelum, $sesudah, $catatan]) {
-            RiwayatStatusPermohonan::create([
-                'permohonan_layanan_id' => $permohonan->id,
-                'status_sebelumnya' => $sebelum?->value,
-                'status_sesudahnya' => $sesudah->value,
-                'diubah_oleh' => $this->operasional->id,
-                'catatan' => $catatan,
-            ]);
-        }
-
-        return $permohonan;
-    }
-
-    private function buatLayanan(
-        Pelanggan $pelanggan,
-        ?PaketInternet $paket,
-        Carbon $tanggalAktif,
-    ): LayananInternet {
-        $permohonan = $this->buatPermohonanDikonversi($pelanggan, $paket);
-
-        $layanan = LayananInternet::create([
-            'nomor_layanan' => $this->generator->generate(LayananInternet::class, 'nomor_layanan', 'LYN'),
-            'permohonan_layanan_id' => $permohonan->id,
-            'pelanggan_id' => $pelanggan->id,
-            'paket_internet_id' => $paket?->id,
-            'tipe_paket' => TipePaketEnum::REGULER,
-            'alamat_pemasangan' => $permohonan->alamat_pemasangan,
-            'detail_alamat' => $permohonan->detail_alamat,
-            'latitude' => $permohonan->latitude,
-            'longitude' => $permohonan->longitude,
-            'status' => StatusLayananEnum::AKTIF,
-            'tanggal_aktif' => $tanggalAktif->toDateString(),
-            'bebas_tagihan_bulan' => 0,
-            'tanggal_mulai_penagihan' => $this->snapKeBulan(
-                Carbon::today()->addMonthNoOverflow(1),
-                (int) $pelanggan->tanggal_tagihan
-            ),
-        ]);
-
-        $this->buatPerangkat($layanan);
-
-        // Backdate konversi & jadwal kerja ke tanggal aktif.
-        RiwayatStatusPermohonan::where('permohonan_layanan_id', $permohonan->id)
-            ->where('status_sesudahnya', StatusPermohonanEnum::DIKONVERSI->value)
-            ->update(['created_at' => $tanggalAktif->toDateString().' 10:00:00']);
-
-        return $layanan;
-    }
-
-    private function buatLayananCustom(Pelanggan $pelanggan, string $nama, int $mbps, int $harga, Carbon $tanggalAktif): LayananInternet
-    {
-        $alamat = self::ALAMAT[array_rand(self::ALAMAT)];
-
-        $permohonan = PermohonanLayanan::create([
-            'nomor_permohonan' => $this->generator->generate(PermohonanLayanan::class, 'nomor_permohonan', 'PMH'),
-            'pelanggan_id' => $pelanggan->id,
-            'jenis_permohonan' => JenisPermohonanEnum::TAMBAH_PAKET,
-            'tipe_paket' => TipePaketEnum::CUSTOM,
-            'nama_paket_custom' => $nama,
-            'kecepatan_custom_mbps' => $mbps,
-            'harga_custom' => $harga,
-            'alamat_pemasangan' => $alamat,
-            'detail_alamat' => 'Depan minimarket, seberang apotek',
-            'latitude' => -7.79,
-            'longitude' => 110.36,
-            'status' => StatusPermohonanEnum::DIKONVERSI,
-            'diproses_oleh' => $this->operasional->id,
-        ]);
-
-        return LayananInternet::create([
-            'nomor_layanan' => $this->generator->generate(LayananInternet::class, 'nomor_layanan', 'LYN'),
-            'permohonan_layanan_id' => $permohonan->id,
-            'pelanggan_id' => $pelanggan->id,
-            'paket_internet_id' => null,
-            'tipe_paket' => TipePaketEnum::CUSTOM,
-            'nama_paket_custom' => $nama,
-            'kecepatan_custom_mbps' => $mbps,
-            'harga_custom' => $harga,
-            'alamat_pemasangan' => $permohonan->alamat_pemasangan,
-            'detail_alamat' => $permohonan->detail_alamat,
-            'latitude' => $permohonan->latitude,
-            'longitude' => $permohonan->longitude,
-            'status' => StatusLayananEnum::AKTIF,
-            'tanggal_aktif' => $tanggalAktif->toDateString(),
-            'bebas_tagihan_bulan' => 0,
-            'tanggal_mulai_penagihan' => $this->snapKeBulan(
-                Carbon::today()->addMonthNoOverflow(1),
-                (int) $pelanggan->tanggal_tagihan
-            ),
-        ]);
-    }
-
-    private function buatPerangkat(LayananInternet $layanan): void
-    {
-        foreach (['ONT', 'Router'] as $tipe) {
-            Perangkat::create([
-                'layanan_internet_id' => $layanan->id,
-                'serial_number' => 'SIC-'.$layanan->id.'-'.mt_rand(100000, 999999),
-                'mac_address' => $tipe === 'ONT'
-                    ? 'AA:BB:CC:DD:00'.$layanan->id
-                    : 'AB:CD:EF:12:34'.$layanan->id,
-                'merek' => 'Huawei',
-                'tipe' => $tipe,
-                'status' => StatusPerangkatEnum::TERPASANG,
-            ]);
-        }
-    }
-
-    private function buatTagihan(LayananInternet $layanan, int $jumlahBulan, ?Carbon $periode = null): Tagihan
-    {
-        $periode = $periode ?? Carbon::today();
-        $harga = (float) ($layanan->tipe_paket === TipePaketEnum::CUSTOM
-            ? $layanan->harga_custom
-            : $layanan->paketInternet->harga);
-
-        return Tagihan::create([
-            'nomor_tagihan' => $this->generator->generate(Tagihan::class, 'nomor_tagihan', 'INV'),
-            'layanan_internet_id' => $layanan->id,
-            'periode_bulan' => $periode->month,
-            'periode_tahun' => $periode->year,
-            'nama_paket_snapshot' => $layanan->nama_paket_custom ?? $layanan->paketInternet->nama_paket,
-            'kecepatan_snapshot_mbps' => $layanan->kecepatan_custom_mbps ?? $layanan->paketInternet->kecepatan_mbps,
-            'harga_snapshot' => $harga,
-            'total_tagihan' => round($harga * $jumlahBulan, 2),
-            'jumlah_bulan' => $jumlahBulan,
-            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
-        ]);
-    }
-
-    /**
-     * Pembayaran tunai yang mengalokasikan penuh/parsial ke satu tagihan.
-     * Kelebihan bayar otomatis dicatat sebagai saldo kredit (deposit).
-     */
-    private function tunai(Pelanggan $pelanggan, Tagihan $tagihan, float $jumlahDibayar, Carbon $dibayarPada): Pembayaran
-    {
-        $alokasi = min($jumlahDibayar, (float) $tagihan->total_tagihan);
-
-        $pembayaran = Pembayaran::create([
-            'pelanggan_id' => $pelanggan->id,
-            'tagihan_id' => null,
-            'metode_pembayaran' => 'tunai',
-            'dibayar_oleh' => $this->keuangan->nama_lengkap,
-            'jumlah_dibayar' => round($jumlahDibayar, 2),
-            'tagihan_terpilih' => [$tagihan->id],
-            'status' => StatusTransaksiEnum::BERHASIL,
-            'dibayar_pada' => $dibayarPada,
-        ]);
-
-        if ($alokasi > 0) {
-            PembayaranTagihan::create([
-                'pembayaran_id' => $pembayaran->id,
-                'tagihan_id' => $tagihan->id,
-                'jumlah_dialokasikan' => round($alokasi, 2),
-            ]);
-        }
-
-        $this->akuiTagihan($tagihan, $alokasi, $dibayarPada);
-
-        if ($jumlahDibayar > $alokasi) {
-            MutasiSaldoKredit::create([
-                'pelanggan_id' => $pelanggan->id,
-                'pembayaran_id' => $pembayaran->id,
-                'tagihan_id' => null,
-                'jenis' => 'kredit',
-                'jumlah' => round($jumlahDibayar - $alokasi, 2),
-                'keterangan' => 'Kelebihan pembayaran otomatis menjadi saldo kredit pelanggan.',
-            ]);
-        }
-
-        return $pembayaran;
-    }
-
-    /**
-     * Pembayaran Xendit gabungan: satu pembayaran mengalokasikan ke satu atau
-     * beberapa tagihan (oldest-first). Kelebihan -> saldo kredit.
-     *
-     * @param  Tagihan[]  $tagihan
-     */
-    private function xendit(Pelanggan $pelanggan, array $tagihan, float $jumlahDibayar, Carbon $dibayarPada): Pembayaran
-    {
-        $sisa = $jumlahDibayar;
-
-        $pembayaran = Pembayaran::create([
-            'pelanggan_id' => $pelanggan->id,
-            'tagihan_id' => null,
-            'metode_pembayaran' => 'xendit',
-            'provider' => 'xendit',
-            'provider_reference' => 'demo-'.strtolower(Str::random(10)),
-            'provider_status' => 'PAID',
-            'jumlah_dibayar' => round($jumlahDibayar, 2),
-            'tagihan_terpilih' => array_map(fn ($t) => $t->id, $tagihan),
-            'status' => StatusTransaksiEnum::BERHASIL,
-            'dibayar_pada' => $dibayarPada,
-        ]);
-
-        foreach ($tagihan as $item) {
-            if ($sisa <= 0) {
-                break;
-            }
-
-            $alokasi = min($sisa, (float) $item->total_tagihan);
-            PembayaranTagihan::create([
-                'pembayaran_id' => $pembayaran->id,
-                'tagihan_id' => $item->id,
-                'jumlah_dialokasikan' => round($alokasi, 2),
-            ]);
-
-            $this->akuiTagihan($item, $alokasi, $dibayarPada);
-            $sisa = round($sisa - $alokasi, 2);
-        }
-
-        if ($sisa > 0) {
-            MutasiSaldoKredit::create([
-                'pelanggan_id' => $pelanggan->id,
-                'pembayaran_id' => $pembayaran->id,
-                'tagihan_id' => null,
-                'jenis' => 'kredit',
-                'jumlah' => round($sisa, 2),
-                'keterangan' => 'Kelebihan pembayaran otomatis menjadi saldo kredit pelanggan.',
-            ]);
-        }
-
-        return $pembayaran;
-    }
-
-    /** Saldo kredit awal (deposit) tanpa pembayaran terkait. */
-    private function deposit(Pelanggan $pelanggan, float $jumlah, Carbon $dibayarPada): void
-    {
-        MutasiSaldoKredit::create([
-            'pelanggan_id' => $pelanggan->id,
-            'pembayaran_id' => null,
-            'tagihan_id' => null,
-            'jenis' => 'kredit',
-            'jumlah' => round($jumlah, 2),
-            'keterangan' => 'Deposit awal (saldo kredit pelanggan).',
-            'created_at' => $dibayarPada,
-        ]);
-    }
-
-    /** Pemakaian saldo kredit untuk melunasi (sebagian) tagihan. */
-    private function pakaiSaldoKredit(Pelanggan $pelanggan, Tagihan $tagihan, float $jumlah): void
-    {
-        MutasiSaldoKredit::create([
-            'pelanggan_id' => $pelanggan->id,
-            'pembayaran_id' => null,
-            'tagihan_id' => $tagihan->id,
-            'jenis' => 'pemakaian',
-            'jumlah' => round($jumlah, 2),
-            'keterangan' => 'Saldo kredit pelanggan digunakan untuk pembayaran tagihan.',
-        ]);
-
-        $this->akuiTagihan($tagihan, $jumlah, Carbon::now());
-    }
-
-    /** Update status tagihan sesuai alokasi yang masuk + catat dibayar_pada. */
-    private function akuiTagihan(Tagihan $tagihan, float $alokasi, Carbon $dibayarPada): void
-    {
-        $terbayar = $alokasi > 0 ? $alokasi : 0;
-
-        $tagihan->update([
-            'status_pembayaran' => $terbayar >= (float) $tagihan->total_tagihan
-                ? StatusPembayaranEnum::SUDAH_BAYAR
-                : StatusPembayaranEnum::BELUM_BAYAR,
-            'dibayar_pada' => $terbayar >= (float) $tagihan->total_tagihan ? $dibayarPada : null,
-        ]);
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 4 — Permohonan tambahan (operasional) & Laporan Kendala
-    // ------------------------------------------------------------------
-    private function seedPermohonanTambahan(): void
-    {
-        $paket = PaketInternet::where('status_aktif', true)->get();
-        $sasaran = Pelanggan::whereNull('reseller_id')->inRandomOrder()->limit(3)->get();
-
-        // 1. MENUNGGU_VERIFIKASI — daftar permohonan operasional.
-        PermohonanLayanan::create([
-            'nomor_permohonan' => $this->generator->generate(PermohonanLayanan::class, 'nomor_permohonan', 'PMH'),
-            'pelanggan_id' => $sasaran[0]->id,
-            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'paket_internet_id' => $paket->first()->id,
-            'tipe_paket' => TipePaketEnum::REGULER,
-            'alamat_pemasangan' => self::ALAMAT[array_rand(self::ALAMAT)],
-            'detail_alamat' => 'Pertigaan dekat tiang listrik no. 12',
-            'latitude' => -7.79,
-            'longitude' => 110.36,
-            'status' => StatusPermohonanEnum::MENUNGGU_VERIFIKASI,
-        ]);
-
-        // 2. DITERIMA namun belum dijadwalkan.
-        $diterima = PermohonanLayanan::create([
-            'nomor_permohonan' => $this->generator->generate(PermohonanLayanan::class, 'nomor_permohonan', 'PMH'),
-            'pelanggan_id' => $sasaran[1]->id,
-            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'paket_internet_id' => $paket->last()->id,
-            'tipe_paket' => TipePaketEnum::REGULER,
-            'alamat_pemasangan' => self::ALAMAT[array_rand(self::ALAMAT)],
-            'detail_alamat' => 'Belakang pom bensin umum',
-            'latitude' => -7.79,
-            'longitude' => 110.36,
-            'status' => StatusPermohonanEnum::DITERIMA,
-            'diproses_oleh' => $this->operasional->id,
-        ]);
-        $this->catatRiwayat($diterima, null, StatusPermohonanEnum::MENUNGGU_VERIFIKASI, 'Permohonan diajukan.');
-        $this->catatRiwayat($diterima, StatusPermohonanEnum::MENUNGGU_VERIFIKASI, StatusPermohonanEnum::DITERIMA, 'Data verifikasi sesuai.');
-
-        // 3. DIJADWALKAN + jadwal kerja mendatang.
-        $dijadwalkan = PermohonanLayanan::create([
-            'nomor_permohonan' => $this->generator->generate(PermohonanLayanan::class, 'nomor_permohonan', 'PMH'),
-            'pelanggan_id' => $sasaran[2]->id,
-            'jenis_permohonan' => JenisPermohonanEnum::PEMASANGAN_BARU,
-            'paket_internet_id' => $paket->first()->id,
-            'tipe_paket' => TipePaketEnum::REGULER,
-            'alamat_pemasangan' => self::ALAMAT[array_rand(self::ALAMAT)],
-            'detail_alamat' => 'Dekat SDN, masuk gang ketiga',
-            'latitude' => -7.79,
-            'longitude' => 110.36,
-            'status' => StatusPermohonanEnum::DIJADWALKAN,
-            'diproses_oleh' => $this->operasional->id,
-        ]);
-        $this->catatRiwayat($dijadwalkan, null, StatusPermohonanEnum::MENUNGGU_VERIFIKASI, 'Permohonan diajukan.');
-        $this->catatRiwayat($dijadwalkan, StatusPermohonanEnum::MENUNGGU_VERIFIKASI, StatusPermohonanEnum::DITERIMA, 'Data verifikasi sesuai.');
-        $this->catatRiwayat($dijadwalkan, StatusPermohonanEnum::DITERIMA, StatusPermohonanEnum::DIJADWALKAN, 'Pekerjaan dijadwalkan.');
-        $this->buatJadwalKerja($dijadwalkan, Carbon::today()->addDays(2), null, null, $this->tim[0]);
-    }
-
-    private function seedLaporanKendala(): void
-    {
-        $layanan = LayananInternet::with('pelanggan')->where('status', StatusLayananEnum::AKTIF)->get();
-
-        $skenario = [
-            [1, StatusLaporanEnum::MENUNGGU],
-            [1, StatusLaporanEnum::DIPROSES],
-            [1, StatusLaporanEnum::SELESAI],
-        ];
-
-        foreach ($skenario as [$jumlah, $status]) {
-            for ($i = 0; $i < $jumlah; $i++) {
-                $target = $layanan->random(1)->first();
-                $buat = [
-                    'nomor_laporan' => $this->generator->generate(LaporanKendala::class, 'nomor_laporan', 'LPR'),
-                    'layanan_internet_id' => $target->id,
-                    'kategori_kendala' => 'Internet Lambat',
-                    'deskripsi' => 'Koneksi sangat lambat setiap malam sekitar jam 21.00.',
-                    'foto' => null,
-                    'status' => $status,
-                ];
-
-                if ($status === StatusLaporanEnum::SELESAI) {
-                    $buat['ditugaskan_ke'] = $this->teknisi[array_rand($this->teknisi)]->id;
-                    $buat['hasil_penanganan'] = 'Kabel connector diganti, signal sudah normal kembali.';
-                }
-                if ($status === StatusLaporanEnum::DIPROSES) {
-                    $buat['ditugaskan_ke'] = $this->teknisi[array_rand($this->teknisi)]->id;
-                }
-
-                LaporanKendala::create($buat);
-            }
-        }
-    }
-
-    private function buatJadwalKerja(
-        PermohonanLayanan $permohonan,
-        Carbon $tanggal,
-        ?HasilKerjaEnum $hasil,
-        ?string $catatanKendala,
-        TimTeknisi $tim
-    ): JadwalKerja {
-        $jadwal = JadwalKerja::create([
-            'permohonan_layanan_id' => $permohonan->id,
-            'tim_teknisi_id' => $tim->id,
-            'tanggal_kerja' => $tanggal->toDateString(),
-            'hasil' => $hasil,
-            'catatan_kendala' => $catatanKendala,
-            'foto_dokumentasi' => null,
-            'latitude_hasil' => -7.79,
-            'longitude_hasil' => 110.36,
-            'diisi_oleh' => $hasil ? $this->teknisi[array_rand($this->teknisi)]->id : null,
-        ]);
-        $jadwal->teknisi()->sync([$this->teknisi[array_rand($this->teknisi)]->id]);
-
-        return $jadwal;
-    }
-
-    private function catatRiwayat(
-        PermohonanLayanan $permohonan,
-        ?StatusPermohonanEnum $sebelum,
-        StatusPermohonanEnum $sesudah,
-        string $catatan = ''
-    ): void {
-        RiwayatStatusPermohonan::create([
-            'permohonan_layanan_id' => $permohonan->id,
-            'status_sebelumnya' => $sebelum?->value,
-            'status_sesudahnya' => $sesudah->value,
-            'diubah_oleh' => $this->operasional->id,
-            'catatan' => $catatan,
-        ]);
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 5 — Notifikasi unread untuk badge merah
-    // ------------------------------------------------------------------
     private function seedNotifikasi(): void
     {
         $permohonan = PermohonanLayanan::where('status', StatusPermohonanEnum::MENUNGGU_VERIFIKASI)->first();
@@ -736,17 +238,204 @@ class DemoSeeder extends Seeder
             }
         }
 
-        \DB::table('notifications')
+        DB::table('notifications')
             ->where('notifiable_id', $this->adminUtama->id)
             ->whereNull('read_at')
             ->whereBetween('created_at', [now()->subMinutes(10), now()])
             ->update(['created_at' => now()->subHours(6)->subMinutes(30)]);
     }
 
-    private function snapKeBulan(Carbon $tanggal, int $hariDasar): Carbon
-    {
-        $hari = min(max(1, $hariDasar), 31);
+    // ------------------------------------------------------------------
+    // Helper
+    // ------------------------------------------------------------------
 
-        return $tanggal->copy()->setDay(min($hari, $tanggal->daysInMonth));
+    /** [bulan, tahun] yang digeser sejumlah bulan dari hari ini. */
+    private function periode(int $offset): array
+    {
+        $tanggal = Carbon::today()->addMonthsNoOverflow($offset);
+
+        return [$tanggal->month, $tanggal->year];
+    }
+
+    private function pelanggan(string $username): Pelanggan
+    {
+        return Pelanggan::where('username', $username)->firstOrFail();
+    }
+
+    private function layanan(Pelanggan $pelanggan, int $urutan = 0): LayananInternet
+    {
+        $layanan = $pelanggan->layananInternet()->orderBy('id')->get()[$urutan] ?? null;
+
+        if (! $layanan) {
+            throw new RuntimeException("Layanan urutan {$urutan} untuk {$pelanggan->username} tidak ditemukan.");
+        }
+
+        return $layanan;
+    }
+
+    private function buatTagihan(LayananInternet $layanan, array $periode, int $jumlahBulan = 1): Tagihan
+    {
+        [$bulan, $tahun] = $periode;
+
+        $tagihan = $this->generateTagihanService->generateUntukLayanan($layanan, $bulan, $tahun, $jumlahBulan);
+        if (! $tagihan) {
+            throw new RuntimeException("Gagal generate tagihan {$bulan}/{$tahun} untuk layanan #{$layanan->id}.");
+        }
+
+        return $tagihan;
+    }
+
+    private function buatTagihanDraft(LayananInternet $layanan, array $periode): Tagihan
+    {
+        [$bulan, $tahun] = $periode;
+
+        $tagihan = $this->generateTagihanService->generateDraftUntukLayanan($layanan, $bulan, $tahun);
+        if (! $tagihan) {
+            throw new RuntimeException("Gagal generate tagihan draft {$bulan}/{$tahun} untuk layanan #{$layanan->id}.");
+        }
+
+        return $tagihan;
+    }
+
+    private function bayarTunai(Pelanggan $pelanggan, float $jumlah, array $tagihanIds, Carbon $waktu): Pembayaran
+    {
+        $pembayaran = $this->allocationService->buatPembayaranTunai($pelanggan, $jumlah, [
+            'metode_pembayaran' => 'tunai',
+            'dibayar_oleh' => $this->keuangan->nama_lengkap,
+            'tagihan_terpilih' => array_map('intval', $tagihanIds),
+        ]);
+
+        $this->tundaWaktuPembayaran($pembayaran, $waktu);
+
+        return $pembayaran;
+    }
+
+    private function bayarXendit(Pelanggan $pelanggan, float $jumlah, array $tagihanIds, Carbon $waktu): Pembayaran
+    {
+        $pembayaran = $this->buktikanPembayaranProvider($pelanggan, $jumlah, $tagihanIds);
+        $this->tundaWaktuPembayaran($pembayaran, $waktu);
+
+        return $pembayaran;
+    }
+
+    /** Pembayaran provider yang diselesaikan lewat selesaikanPembayaran (alur webhook). */
+    private function buktikanPembayaranProvider(Pelanggan $pelanggan, float $jumlah, array $tagihanIds): Pembayaran
+    {
+        $pembayaran = Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'xendit',
+            'provider' => 'xendit',
+            'provider_reference' => 'INV-'.strtoupper(Str::random(12)),
+            'provider_external_id' => 'sicakra-'.Str::lower(Str::random(14)),
+            'provider_status' => 'PAID',
+            'jumlah_dibayar' => round($jumlah, 2),
+            'tagihan_terpilih' => array_map('intval', $tagihanIds),
+            'status' => StatusTransaksiEnum::BERHASIL,
+        ]);
+
+        $this->allocationService->selesaikanPembayaran($pembayaran->refresh());
+
+        return $pembayaran->refresh();
+    }
+
+    /** Pembayaran PENDING yang belum pernah dikonfirmasi webhook. */
+    private function buatPembayaranPending(Pelanggan $pelanggan, float $jumlah, Carbon $waktu): Pembayaran
+    {
+        $pembayaran = Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'xendit',
+            'provider' => 'xendit',
+            'provider_reference' => 'INV-'.strtoupper(Str::random(12)),
+            'provider_external_id' => 'sicakra-'.Str::lower(Str::random(14)),
+            'payment_url' => 'https://checkout.xendit.co/web/'.Str::lower(Str::random(24)),
+            'provider_status' => 'active',
+            'provider_expires_at' => now()->addDays(3),
+            'jumlah_dibayar' => round($jumlah, 2),
+            'tagihan_terpilih' => null,
+            'status' => StatusTransaksiEnum::PENDING,
+        ]);
+
+        Pembayaran::whereKey($pembayaran->id)->update([
+            'created_at' => $waktu,
+            'updated_at' => $waktu,
+        ]);
+
+        return $pembayaran->refresh();
+    }
+
+    /** Pembayaran provider yang berakhir GAGAL. */
+    private function buatPembayaranGagal(Pelanggan $pelanggan, float $jumlah, Carbon $waktu): Pembayaran
+    {
+        $pembayaran = Pembayaran::create([
+            'pelanggan_id' => $pelanggan->id,
+            'tagihan_id' => null,
+            'metode_pembayaran' => 'xendit',
+            'provider' => 'xendit',
+            'provider_reference' => 'INV-'.strtoupper(Str::random(12)),
+            'provider_external_id' => 'sicakra-'.Str::lower(Str::random(14)),
+            'provider_status' => 'FAILED',
+            'jumlah_dibayar' => round($jumlah, 2),
+            'tagihan_terpilih' => null,
+            'status' => StatusTransaksiEnum::GAGAL,
+        ]);
+
+        Pembayaran::whereKey($pembayaran->id)->update([
+            'created_at' => $waktu,
+            'updated_at' => $waktu,
+        ]);
+
+        return $pembayaran->refresh();
+    }
+
+    /** Pemakaian saldo kredit untuk tagihan tertentu (alur gunakanSaldoKredit). */
+    private function pakaiSaldoKredit(Pelanggan $pelanggan, array $tagihanIds, Carbon $waktu): void
+    {
+        $this->allocationService->gunakanSaldoKredit($pelanggan, array_map('intval', $tagihanIds));
+
+        MutasiSaldoKredit::where('pelanggan_id', $pelanggan->id)
+            ->whereIn('tagihan_id', $tagihanIds)
+            ->where('jenis', 'pemakaian')
+            ->update(['created_at' => $waktu, 'updated_at' => $waktu]);
+
+        foreach ($tagihanIds as $tagihanId) {
+            $tagihan = Tagihan::find($tagihanId);
+            if ($tagihan?->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
+                Tagihan::whereKey($tagihanId)->update(['dibayar_pada' => $waktu, 'updated_at' => $waktu]);
+            }
+        }
+    }
+
+    /** Backdate pembayaran & seluruh efeknya (alokasi, mutasi kredit, tagihan lunas). */
+    private function tundaWaktuPembayaran(Pembayaran $pembayaran, Carbon $waktu): void
+    {
+        Pembayaran::whereKey($pembayaran->id)->update([
+            'dibayar_pada' => $waktu,
+            'created_at' => $waktu,
+            'updated_at' => $waktu,
+        ]);
+
+        PembayaranTagihan::where('pembayaran_id', $pembayaran->id)->update([
+            'created_at' => $waktu,
+            'updated_at' => $waktu,
+        ]);
+
+        MutasiSaldoKredit::where('pembayaran_id', $pembayaran->id)->update([
+            'created_at' => $waktu,
+            'updated_at' => $waktu,
+        ]);
+
+        foreach (PembayaranTagihan::where('pembayaran_id', $pembayaran->id)->pluck('tagihan_id') as $tagihanId) {
+            $tagihan = Tagihan::find($tagihanId);
+            if ($tagihan?->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR) {
+                Tagihan::whereKey($tagihanId)->update(['dibayar_pada' => $waktu, 'updated_at' => $waktu]);
+            }
+        }
+    }
+
+    private function waktu(int $hariLalu, int $jam, int $menit, int $detik): Carbon
+    {
+        return Carbon::now()->subDays($hariLalu)->setTime($jam, $menit, $detik);
     }
 }

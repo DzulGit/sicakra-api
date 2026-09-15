@@ -22,6 +22,7 @@ class TagihanFactory extends Factory
             'kecepatan_snapshot_mbps' => fake()->numberBetween(10, 100),
             'harga_snapshot' => 150000,
             'total_tagihan' => 150000,
+            'jumlah_bulan' => 1,
             'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
         ];
     }

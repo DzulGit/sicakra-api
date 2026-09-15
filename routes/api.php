@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Auth\AuthPelangganController;
 use App\Http\Controllers\Api\Auth\LupaPasswordController;
 use App\Http\Controllers\Api\Keuangan\DashboardKeuanganController;
 use App\Http\Controllers\Api\Keuangan\PendapatanController;
+use App\Http\Controllers\Api\Keuangan\PembayaranController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Operasional\DashboardController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPendapatanController;
+use App\Http\Controllers\Api\Reseller\ResellerPembayaranController;
 use App\Http\Controllers\Api\Reseller\TagihanController as ResellerTagihanController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController as ResellerPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
@@ -131,6 +133,13 @@ Route::prefix('admin')->group(function () {
             Route::post('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
             Route::post('pendapatan/report', [PendapatanController::class, 'report']);
 
+            // Riwayat pembayaran (transaksi + alokasi + saldo kredit + export)
+            Route::get('pembayaran', [PembayaranController::class, 'index']);
+            Route::get('pembayaran/export/excel', [PembayaranController::class, 'laporanExcel']);
+            Route::get('pembayaran/export/pdf', [PembayaranController::class, 'laporanPdf']);
+            Route::get('pembayaran/{pembayaran}', [PembayaranController::class, 'show']);
+            Route::get('saldo-kredit/{pelanggan}', [PembayaranController::class, 'kredit']);
+
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
             Route::get('tagihan', [KeuanganTagihanController::class, 'index']);
 
@@ -173,6 +182,11 @@ Route::prefix('reseller')->group(function () {
         Route::get('pendapatan/pelanggan-list', [ResellerPendapatanController::class, 'pelangganList']);
         Route::post('pendapatan/report', [ResellerPendapatanController::class, 'report']);
         Route::post('pendapatan/report/excel', [ResellerPendapatanController::class, 'reportExcel']);
+        Route::get('pembayaran', [ResellerPembayaranController::class, 'index']);
+        Route::get('pembayaran/export/excel', [ResellerPembayaranController::class, 'laporanExcel']);
+        Route::get('pembayaran/export/pdf', [ResellerPembayaranController::class, 'laporanPdf']);
+        Route::get('pembayaran/{pembayaran}', [ResellerPembayaranController::class, 'show']);
+        Route::get('saldo-kredit/{pelanggan}', [ResellerPembayaranController::class, 'kredit']);
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);

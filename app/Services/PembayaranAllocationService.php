@@ -623,8 +623,127 @@ class PembayaranAllocationService
                 2
             ),
             'status_pembayaran' => $tagihan->status_pembayaran->value,
+            'status_tampilan' => round($sudahDibayar + $sudahDipakaiKredit, 2) <= 0
+                ? 'belum_bayar'
+                : (round(max(0, $totalTagihan - $sudahDibayar - $sudahDipakaiKredit), 2) <= 0
+                    ? 'lunas'
+                    : 'sedang_dicicil'),
             'dibayar_pada' => $tagihan->dibayar_pada?->toDateTimeString(),
+            'tanggal_lunas' => $tagihan->dibayar_pada
+                ? $this->waktuWib($tagihan->dibayar_pada)
+                : null,
         ];
+    }
+
+    /**
+     * Nomor pembayaran untuk khalayak (PAY-000123). Kolom nomor_pembayaran
+     * tidak disimpan — diturunkan dari id agar tidak menambah skema.
+     */
+    public function nomorPembayaran(Pembayaran $pembayaran): string
+    {
+        return 'PAY-' . str_pad((string) $pembayaran->id, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Timeline per tagihan: transaksi pembayaran BERHASIL yang menyentuh
+     * tagihan, plus pemakaian saldo kredit, dengan sisa tagihan setelah
+     * setiap kejadian. Tambahan bersifat append-only (histori lama tidak
+     * berubah ketika pembayaran baru masuk).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function timelinePembayaranTagihan(Tagihan $tagihan): array
+    {
+        $events = [];
+
+        foreach ($tagihan->alokasiPembayaran()->with('pembayaran')->get() as $alokasi) {
+            $pembayaran = $alokasi->pembayaran;
+
+            if (
+                !$pembayaran
+                || $pembayaran->status->value !== StatusTransaksiEnum::BERHASIL->value
+            ) {
+                continue;
+            }
+
+            $waktu = $pembayaran->dibayar_pada ?? $pembayaran->created_at;
+
+            $events[] = [
+                'jenis' => 'pembayaran',
+                'waktu' => $waktu,
+                'urutan' => $pembayaran->id,
+                'jumlah' => round((float) $alokasi->jumlah_dialokasikan, 2),
+                'nomor_pembayaran' => $this->nomorPembayaran($pembayaran),
+                'pembayaran_id' => $pembayaran->id,
+                'metode_pembayaran' => $pembayaran->metode_pembayaran,
+                'provider' => $pembayaran->provider,
+                'status' => $pembayaran->status->value,
+                'keterangan' => null,
+            ];
+        }
+
+        foreach (
+            MutasiSaldoKredit::query()
+                ->where('tagihan_id', $tagihan->id)
+                ->where('jenis', 'pemakaian')
+                ->get() as $mutasi
+        ) {
+            $events[] = [
+                'jenis' => 'kredit',
+                'waktu' => $mutasi->created_at,
+                'urutan' => $mutasi->id,
+                'jumlah' => round((float) $mutasi->jumlah, 2),
+                'nomor_pembayaran' => null,
+                'pembayaran_id' => null,
+                'metode_pembayaran' => null,
+                'provider' => null,
+                'status' => 'pemakaian_kredit',
+                'keterangan' => $mutasi->keterangan,
+            ];
+        }
+
+        usort($events, function (array $a, array $b) {
+            $ta = $a['waktu'] ? $a['waktu']->getTimestamp() : 0;
+            $tb = $b['waktu'] ? $b['waktu']->getTimestamp() : 0;
+
+            return [$ta <=> $tb, $a['urutan'] <=> $b['urutan']];
+        });
+
+        $totalTagihan = (float) $tagihan->total_tagihan;
+        $sudahDibayar = 0;
+        $sudahDipakaiKredit = 0;
+
+        foreach ($events as &$event) {
+            if ($event['jenis'] === 'pembayaran') {
+                $sudahDibayar = round($sudahDibayar + $event['jumlah'], 2);
+            } else {
+                $sudahDipakaiKredit = round($sudahDipakaiKredit + $event['jumlah'], 2);
+            }
+
+            $event['sisa_setelah'] = round(
+                max(0, $totalTagihan - $sudahDibayar - $sudahDipakaiKredit),
+                2
+            );
+            $event['waktu'] = $event['waktu'] ? $this->waktuWib($event['waktu']) : null;
+        }
+        unset($event);
+
+        return array_reverse($events);
+    }
+
+    /**
+     * Format waktu tampilan dalam WIB (UTC+7) dari timestamp UTC.
+     * Penyimpanan tetap UTC — hanya presentasi laporan yang dikonversi.
+     */
+    public function waktuWib($tanggalWaktu): ?string
+    {
+        if (!$tanggalWaktu) {
+            return null;
+        }
+
+        return $tanggalWaktu
+            ->timezone('Asia/Jakarta')
+            ->format('d M Y, H:i:s');
     }
 
     /**

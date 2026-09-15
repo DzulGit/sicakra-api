@@ -17,6 +17,7 @@ class PelangganFactory extends Factory
             'nomor_hp' => fake()->unique()->numerify('08##########'),
             'email' => fake()->unique()->safeEmail(),
             'foto_ktp' => 'ktp/dummy.jpg',
+            'tanggal_tagihan' => 20,
             'password_sudah_dibuat' => false,
         ];
     }

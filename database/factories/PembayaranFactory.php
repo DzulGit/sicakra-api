@@ -25,6 +25,8 @@ class PembayaranFactory extends Factory
             'provider_expires_at' => null,
             'dibayar_oleh' => null,
             'jumlah_dibayar' => 150000,
+            'tagihan_terpilih' => null,
+            'pakai_saldo_kredit' => false,
             'referensi_xendit' => null,
             'status' => StatusTransaksiEnum::PENDING,
             'payload_webhook' => null,
