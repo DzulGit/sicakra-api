@@ -29,6 +29,7 @@ use App\Models\TimTeknisi;
 use App\Notifications\LaporanKendalaBaruNotification;
 use App\Notifications\PembayaranTagihanNotification;
 use App\Notifications\PendaftarBaruNotification;
+use App\Services\GenerateTagihanService;
 use App\Services\GeneratorNomorService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
@@ -240,6 +241,21 @@ class DemoSeeder extends Seeder
         // Pelanggan baru reseller: layanan aktif, belum ada tagihan.
         $sulton = $this->buatPelanggan('Sulton Baru', 'sulton', '081200000011', '341111111100011', $this->reseller);
         $this->buatLayanan($sulton, $silver, Carbon::today()->subMonths(1));
+
+        // Draft tagihan bulan berikutnya — siap diterbitkan dari menu keuangan/reseller.
+        // Terbitkan hanya mengizinkan layanan yang SUDAH punya tagihan sebelumnya,
+        // jadi pelanggan baru (Sulton) sengaja TIDAK dapat draft agar alur
+        // "buat tagihan pertama" tetap bisa dites.
+        $bulanDepan = Carbon::today()->month % 12 + 1;
+        $tahunDepan = Carbon::today()->month === 12 ? Carbon::today()->year + 1 : Carbon::today()->year;
+        foreach ([$layananBudi, $layananAgus, $layananRina2, $layananPutra, $layananIlham] as $layanan) {
+            $this->buatDraftTagihan($layanan, $bulanDepan, $tahunDepan);
+        }
+    }
+
+    private function buatDraftTagihan(LayananInternet $layanan, int $bulan, int $tahun): void
+    {
+        app(GenerateTagihanService::class)->generateDraftUntukLayanan($layanan, $bulan, $tahun);
     }
 
     private function buatPelanggan(string $nama, string $username, string $nomorHp, string $nik, ?Admin $reseller = null): Pelanggan
