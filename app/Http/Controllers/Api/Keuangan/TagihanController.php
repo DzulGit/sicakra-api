@@ -41,7 +41,7 @@ class TagihanController extends Controller
             $detail = $this->pembayaranAllocationService
                 ->detailTagihan($item);
 
-            foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $key) {
+            foreach (['telah_terbayar', 'sisa', 'sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status', 'status_tampilan'] as $key) {
                 $item->setAttribute($key, $detail[$key]);
             }
 
@@ -65,7 +65,7 @@ class TagihanController extends Controller
         $detail = $this->pembayaranAllocationService
             ->detailTagihan($tagihan);
 
-        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status_tampilan', 'tanggal_lunas'] as $key) {
+        foreach (['telah_terbayar', 'sisa', 'sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status', 'status_tampilan', 'tanggal_lunas'] as $key) {
             $tagihan->setAttribute($key, $detail[$key]);
         }
 

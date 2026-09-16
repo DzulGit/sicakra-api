@@ -134,11 +134,7 @@ Route::prefix('admin')->group(function () {
             Route::post('pendapatan/report/excel', [PendapatanController::class, 'reportExcel']);
             Route::post('pendapatan/report', [PendapatanController::class, 'report']);
 
-            // Riwayat pembayaran (transaksi + alokasi + saldo kredit + export)
-            Route::get('pembayaran', [PembayaranController::class, 'index']);
-            Route::get('pembayaran/export/excel', [PembayaranController::class, 'laporanExcel']);
-            Route::get('pembayaran/export/pdf', [PembayaranController::class, 'laporanPdf']);
-            Route::get('pembayaran/{pembayaran}', [PembayaranController::class, 'show']);
+            // Saldo kredit (ledger) — riwayat pembayaran terpisah dihapus
             Route::get('saldo-kredit/{pelanggan}', [PembayaranController::class, 'kredit']);
 
             Route::get('tagihan-ringkasan', [KeuanganTagihanController::class, 'ringkasanOmzet']);
@@ -183,10 +179,6 @@ Route::prefix('reseller')->group(function () {
         Route::get('pendapatan/pelanggan-list', [ResellerPendapatanController::class, 'pelangganList']);
         Route::post('pendapatan/report', [ResellerPendapatanController::class, 'report']);
         Route::post('pendapatan/report/excel', [ResellerPendapatanController::class, 'reportExcel']);
-        Route::get('pembayaran', [ResellerPembayaranController::class, 'index']);
-        Route::get('pembayaran/export/excel', [ResellerPembayaranController::class, 'laporanExcel']);
-        Route::get('pembayaran/export/pdf', [ResellerPembayaranController::class, 'laporanPdf']);
-        Route::get('pembayaran/{pembayaran}', [ResellerPembayaranController::class, 'show']);
         Route::get('saldo-kredit/{pelanggan}', [ResellerPembayaranController::class, 'kredit']);
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
@@ -275,7 +267,6 @@ Route::prefix('pelanggan')->group(function () {
 
         Route::get('deposit', [TagihanSayaController::class, 'deposit']);
         Route::post('deposit/gunakan', [TagihanSayaController::class, 'gunakanDeposit']);
-        Route::get('pembayaran', [TagihanSayaController::class, 'riwayatPembayaran']);
 
         Route::get('laporan-kendala', [LaporanKendalaSayaController::class, 'index']);
         Route::get('laporan-kendala/{laporanKendala}', [LaporanKendalaSayaController::class, 'show']);

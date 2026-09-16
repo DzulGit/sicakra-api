@@ -379,26 +379,6 @@ class TagihanSayaController extends Controller
     }
 
     /**
-     * Riwayat pembayaran pelanggan (semua status, termasuk
-     * PENDING yang masih punya payment_url aktif).
-     */
-    public function riwayatPembayaran(Request $request): JsonResponse
-    {
-        $data = Pembayaran::query()
-            ->where('pelanggan_id', $request->user()->id)
-            ->with([
-                'alokasiTagihan.tagihan',
-                'mutasiSaldoKredit',
-            ])
-            ->orderByDesc('id')
-            ->paginate(15);
-
-        return response()->json([
-            'data' => $data,
-        ]);
-    }
-
-    /**
      * Membuat invoice Xendit baru untuk tagihan yang belum lunas.
      *
      * Setiap regenerate menghasilkan Pembayaran baru.
