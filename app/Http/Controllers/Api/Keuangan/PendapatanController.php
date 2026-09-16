@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Keuangan;
 
+use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Exports\LaporanPendapatanMultiSheetExport;
@@ -17,6 +18,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PendapatanController extends Controller
@@ -32,6 +34,11 @@ class PendapatanController extends Controller
     private const NAMA_BULAN = [
         1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun',
         7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
+    ];
+
+    private const NAMA_BULAN_LENGKAP = [
+        1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
+        7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
     ];
 
     /** Daftar pelanggan untuk dropdown multi-select (dengan provinsi/kota untuk filter realtime). */
@@ -349,51 +356,229 @@ class PendapatanController extends Controller
 
     // ─── Multi-Sheet Builders ──────────────────────────────────────
 
+    /**
+     * Ringkasan timeline pelanggan × bulan.
+     *
+     * Setiap pelanggan selalu memiliki satu baris per bulan dalam rentang
+     * laporan (Januari s/d bulan maksimum filter, atau Desember bila "semua
+     * bulan"). Status per bulan diturunkan dari data tagihan & pembayaran;
+     * nominal tetap numerik agar dapat di-SUM di Excel.
+     *
+     * Periode tagihan memakai periode AWAL tagihan (periode_bulan/tahun).
+     * Tagihan multi-bulan (jumlah_bulan > 1) tidak dipecah ke bulan-bulan
+     * yang dicakupnya — dipetakan penuh ke periode awalnya, konsisten dengan
+     * sheet alokasi & perhitungan sisa di PembayaranAllocationService.
+     * ponytail: atribusi multi-bulan ke period awal; pecah/dobel berlaku bila
+     * timeline harus menampilkan cakupan per bulan.
+     */
     private function buildRingkasanData(Request $request): array
     {
-        $tagihan = $this->tagihanQuery($request)
-            ->with([
-                'layananInternet.pelanggan',
-                'alokasiPembayaran.pembayaran',
-            ])
-            ->orderBy('periode_tahun')
-            ->orderBy('periode_bulan')
+        $tahun = $request->integer('tahun', now()->year);
+        $bulanTerpilih = $this->parseBulanArray($request);
+        $bulanAkhir = $bulanTerpilih !== null ? max($bulanTerpilih) : 12;
+
+        $pelangganList = Pelanggan::query()
+            ->select('id', 'nama_lengkap', 'nomor_pelanggan')
+            ->with('layananInternet:id,pelanggan_id,status,tanggal_aktif,tanggal_mulai_penagihan')
+            ->when(
+                $this->resellerId === null,
+                fn ($q) => $q->whereNull('reseller_id'),
+                fn ($q) => $q->where('reseller_id', $this->resellerId)
+            )
+            ->orderBy('nama_lengkap')
             ->get();
+
+        if ($pelangganList->isEmpty()) {
+            return [];
+        }
+
+        $pelangganIds = $pelangganList->pluck('id');
+        $requestPelanggan = $request->input('pelanggan_ids');
+        if (is_array($requestPelanggan) && count($requestPelanggan) > 0) {
+            $pelangganIds = $pelangganIds->intersect(array_map('intval', $requestPelanggan))->values();
+        }
+
+        $layananKePelanggan = [];
+        foreach ($pelangganList as $plg) {
+            foreach ($plg->layananInternet as $l) {
+                $layananKePelanggan[$l->id] = $plg->id;
+            }
+        }
+
+        // Semua tagihan pelanggan dalam scope (tidak dibatasi tahun laporan,
+        // karena sisa tagihan tahun sebelumnya menentukan status Nunggak).
+        $tagihan = Tagihan::query()
+            ->whereHas('layananInternet', fn (Builder $q) => $q->whereIn('pelanggan_id', $pelangganIds))
+            ->with('alokasiPembayaran.pembayaran:id,status')
+            ->get();
+
+        // Kredit/deposit yang terpakai per tagihan (ledger pemakaian).
+        $kreditTerpakai = MutasiSaldoKredit::query()
+            ->selectRaw('tagihan_id, SUM(jumlah) as total')
+            ->whereIn('tagihan_id', $tagihan->pluck('id'))
+            ->where('jenis', 'pemakaian')
+            ->groupBy('tagihan_id')
+            ->pluck('total', 'tagihan_id');
+
+        $bulananPerPelanggan = [];
+        $sisaPerBulan = [];
+
+        foreach ($tagihan as $t) {
+            $plgId = $layananKePelanggan[$t->layanan_internet_id] ?? null;
+            if ($plgId === null) {
+                continue;
+            }
+
+            $dibayarPembayaran = (float) $t->alokasiPembayaran
+                ->filter(fn (PembayaranTagihan $a) => $a->pembayaran?->status === StatusTransaksiEnum::BERHASIL)
+                ->sum('jumlah_dialokasikan');
+            $dibayarKredit = (float) ($kreditTerpakai[$t->id] ?? 0);
+            $totalTagihan = (float) $t->total_tagihan;
+
+            $key = ($t->periode_tahun * 12) + $t->periode_bulan;
+
+            $bulananPerPelanggan[$plgId][$key]['nomor_tagihan'][] = $t->nomor_tagihan;
+            $bulananPerPelanggan[$plgId][$key]['total_tagihan'] = ($bulananPerPelanggan[$plgId][$key]['total_tagihan'] ?? 0) + $totalTagihan;
+            $bulananPerPelanggan[$plgId][$key]['dibayar_pembayaran'] = ($bulananPerPelanggan[$plgId][$key]['dibayar_pembayaran'] ?? 0) + $dibayarPembayaran;
+            $bulananPerPelanggan[$plgId][$key]['dibayar_kredit'] = ($bulananPerPelanggan[$plgId][$key]['dibayar_kredit'] ?? 0) + $dibayarKredit;
+
+            $tanggalLunasSebelum = $bulananPerPelanggan[$plgId][$key]['tanggal_lunas'] ?? null;
+            if ($t->dibayar_pada && ($tanggalLunasSebelum === null || $t->dibayar_pada->gt($tanggalLunasSebelum))) {
+                $bulananPerPelanggan[$plgId][$key]['tanggal_lunas'] = $t->dibayar_pada;
+            }
+
+            $sisa = max(0, $totalTagihan - $dibayarPembayaran - $dibayarKredit);
+            $sisaPerBulan[$plgId][$key] = ($sisaPerBulan[$plgId][$key] ?? 0) + $sisa;
+        }
 
         $rows = [];
 
-        foreach ($tagihan as $t) {
-            $pelanggan = $t->layananInternet->pelanggan;
+        foreach ($pelangganList as $plg) {
+            if (! $pelangganIds->contains($plg->id)) {
+                continue;
+            }
 
-            $alokasiBerhasil = $t->alokasiPembayaran
-                ->filter(fn (PembayaranTagihan $a) => $a->pembayaran?->status === StatusTransaksiEnum::BERHASIL);
+            $layanan = $plg->layananInternet;
+            $mulai = $this->tanggalMulaiBerlangganan($layanan);
+            $mulaiKey = $mulai !== null ? ($mulai->year * 12) + $mulai->month : null;
+            $masihAktif = $layanan->contains(fn (LayananInternet $l) => $l->status === StatusLayananEnum::AKTIF);
 
-            $dibayarPembayaran = (float) $alokasiBerhasil
-                ->filter(fn (PembayaranTagihan $a) => ! $a->pembayaran?->pakai_saldo_kredit)
-                ->sum('jumlah_dialokasikan');
-            $dibayarKredit = (float) $alokasiBerhasil
-                ->filter(fn (PembayaranTagihan $a) => (bool) $a->pembayaran?->pakai_saldo_kredit)
-                ->sum('jumlah_dialokasikan');
+            for ($bulan = 1; $bulan <= $bulanAkhir; $bulan++) {
+                $key = ($tahun * 12) + $bulan;
+                $periode = (self::NAMA_BULAN_LENGKAP[$bulan] ?? '').' '.$tahun;
 
-            $totalTagihan = (float) $t->total_tagihan;
-            $totalTerbayar = $dibayarPembayaran + $dibayarKredit;
+                if ($mulaiKey !== null && $key < $mulaiKey) {
+                    $rows[] = $this->ringkasanRow($plg, $periode, [], 0, 0, 0, 'Belum Berlangganan');
 
-            $rows[] = [
-                'nomor_tagihan' => $t->nomor_tagihan,
-                'nomor_pelanggan' => $pelanggan?->nomor_pelanggan ?? '',
-                'pelanggan' => $pelanggan?->nama_lengkap ?? '',
-                'periode' => trim((self::NAMA_BULAN[$t->periode_bulan] ?? '').' '.$t->periode_tahun),
-                'total_tagihan' => $totalTagihan,
-                'dibayar_pembayaran' => $dibayarPembayaran,
-                'dibayar_kredit' => $dibayarKredit,
-                'total_terbayar' => $totalTerbayar,
-                'sisa' => max(0, $totalTagihan - $totalTerbayar),
-                'status' => $this->labelStatus($t->status_pembayaran),
-                'tanggal_lunas' => $t->dibayar_pada?->format('d-m-Y') ?? '',
-            ];
+                    continue;
+                }
+
+                $own = $bulananPerPelanggan[$plg->id][$key] ?? null;
+                $nunggak = $masihAktif && $this->punyaSisaSebelum($sisaPerBulan[$plg->id] ?? [], $key);
+
+                if ($own === null && ! $nunggak) {
+                    $rows[] = $this->ringkasanRow($plg, $periode, [], 0, 0, 0, 'Belum Ada Tagihan');
+
+                    continue;
+                }
+
+                $totalTagihan = (float) ($own['total_tagihan'] ?? 0);
+                $dibayarPembayaran = (float) ($own['dibayar_pembayaran'] ?? 0);
+                $dibayarKredit = (float) ($own['dibayar_kredit'] ?? 0);
+                $sisa = max(0, $totalTagihan - $dibayarPembayaran - $dibayarKredit);
+
+                if ($nunggak) {
+                    $status = 'Nunggak';
+                } elseif ($sisa <= 0) {
+                    $status = 'Lunas';
+                } elseif ($dibayarPembayaran + $dibayarKredit <= 0) {
+                    $status = 'Belum Bayar';
+                } else {
+                    $status = 'Sedang Dicicil';
+                }
+
+                $tanggalLunas = $status === 'Lunas'
+                    ? $this->formatTanggalLunas($own['tanggal_lunas'] ?? null)
+                    : '';
+
+                $rows[] = $this->ringkasanRow(
+                    $plg,
+                    $periode,
+                    $own['nomor_tagihan'] ?? [],
+                    $totalTagihan,
+                    $dibayarPembayaran,
+                    $dibayarKredit,
+                    $status,
+                    $tanggalLunas
+                );
+            }
         }
 
         return $rows;
+    }
+
+    /** Tanggal mulai berlangganan = tanggal_mulai_penagihan, fallback ke tanggal_aktif. */
+    private function tanggalMulaiBerlangganan(Collection $layanan): ?Carbon
+    {
+        $mulai = null;
+
+        foreach ($layanan as $l) {
+            $candidate = $l->tanggal_mulai_penagihan ?? $l->tanggal_aktif;
+
+            if ($candidate && ($mulai === null || $candidate->lt($mulai))) {
+                $mulai = $candidate;
+            }
+        }
+
+        return $mulai;
+    }
+
+    /** Ada tagihan dari bulan sebelumnya yang masih punya sisa pembayaran. */
+    private function punyaSisaSebelum(array $sisaPerBulan, int $currentKey): bool
+    {
+        foreach ($sisaPerBulan as $key => $sisa) {
+            if ($key < $currentKey && $sisa > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function ringkasanRow(
+        Pelanggan $plg,
+        string $periode,
+        array $nomorTagihan,
+        float $totalTagihan,
+        float $dibayarPembayaran,
+        float $dibayarKredit,
+        string $status,
+        string $tanggalLunas = ''
+    ): array {
+        $totalTerbayar = $dibayarPembayaran + $dibayarKredit;
+
+        return [
+            'nomor_tagihan' => implode(', ', $nomorTagihan),
+            'nomor_pelanggan' => $plg->nomor_pelanggan,
+            'pelanggan' => $plg->nama_lengkap,
+            'periode' => $periode,
+            'total_tagihan' => round($totalTagihan, 2),
+            'dibayar_pembayaran' => round($dibayarPembayaran, 2),
+            'dibayar_kredit' => round($dibayarKredit, 2),
+            'total_terbayar' => round($totalTerbayar, 2),
+            'sisa' => max(0, round($totalTagihan - $totalTerbayar, 2)),
+            'status' => $status,
+            'tanggal_lunas' => $tanggalLunas,
+        ];
+    }
+
+    private function formatTanggalLunas(?Carbon $carbon): string
+    {
+        if ($carbon === null) {
+            return '';
+        }
+
+        return $carbon->timezone('Asia/Jakarta')->format('d F Y H:i:s');
     }
 
     private function buildTransaksiData(Request $request): array

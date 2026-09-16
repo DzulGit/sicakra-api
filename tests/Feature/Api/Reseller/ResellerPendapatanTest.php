@@ -108,4 +108,68 @@ class ResellerPendapatanTest extends TestCase
             $excel->headers->get('Content-Type'),
         );
     }
+
+    public function test_reseller_ringkasan_timeline_hanya_berisi_pelanggan_miliknya(): void
+    {
+        $resellerA = Admin::factory()->reseller()->create();
+        $resellerB = Admin::factory()->reseller()->create();
+
+        $pelangganA = Pelanggan::factory()->create([
+            'reseller_id' => $resellerA->id,
+            'nama_lengkap' => 'Milik Reseller A',
+        ]);
+        $layananA = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelangganA->id,
+            'status' => StatusLayananEnum::AKTIF,
+            'tanggal_aktif' => '2026-01-01',
+            'tanggal_mulai_penagihan' => '2026-01-01',
+        ]);
+        Tagihan::factory()->create([
+            'layanan_internet_id' => $layananA->id,
+            'periode_bulan' => 9,
+            'periode_tahun' => 2026,
+            'total_tagihan' => 150000,
+        ]);
+
+        $pelangganB = Pelanggan::factory()->create([
+            'reseller_id' => $resellerB->id,
+            'nama_lengkap' => 'Milik Reseller B',
+        ]);
+        $layananB = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelangganB->id,
+            'status' => StatusLayananEnum::AKTIF,
+            'tanggal_aktif' => '2026-01-01',
+            'tanggal_mulai_penagihan' => '2026-01-01',
+        ]);
+        Tagihan::factory()->create([
+            'layanan_internet_id' => $layananB->id,
+            'periode_bulan' => 9,
+            'periode_tahun' => 2026,
+            'total_tagihan' => 999000,
+        ]);
+
+        Sanctum::actingAs($resellerA);
+
+        $response = $this->postJson('/api/reseller/pendapatan/report/excel', [
+            'tahun' => 2026,
+            'bulan' => [9],
+        ]);
+        $response->assertOk();
+
+        $tmp = tempnam(sys_get_temp_dir(), 'laporan-reseller').'.xlsx';
+        file_put_contents($tmp, $response->getContent());
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmp);
+            $rows = array_slice($spreadsheet->getSheetByName('Ringkasan Tagihan')->toArray(), 3);
+
+            $pelangganDiTimeline = array_column($rows, 3);
+
+            $this->assertCount(9, $pelangganDiTimeline);
+            $this->assertContains('Milik Reseller A', $pelangganDiTimeline);
+            $this->assertNotContains('Milik Reseller B', $pelangganDiTimeline);
+        } finally {
+            @unlink($tmp);
+        }
+    }
 }
