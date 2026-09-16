@@ -97,6 +97,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(3)->by($request->ip());
         });
 
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(120)->by(
+                $request->user()?->id ?: $request->ip()
+            );
+        });
+
         Event::listen(
             TagihanDibuat::class,
             KirimNotifikasiTagihanDibuat::class,

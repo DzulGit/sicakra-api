@@ -19,7 +19,12 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => array_values(array_unique(array_filter(
+        array_merge(
+            explode(',', (string) env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:5174,http://localhost:8000,http://localhost:8090')),
+            [env('APP_URL', 'http://localhost')]
+        )
+    ))),
 
     'allowed_origins_patterns' => [],
 

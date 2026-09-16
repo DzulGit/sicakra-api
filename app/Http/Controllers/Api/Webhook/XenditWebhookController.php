@@ -21,7 +21,9 @@ class XenditWebhookController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         Log::info('Xendit webhook masuk', [
-            'payload' => $request->all(),
+            'external_id' => $request->input('external_id'),
+            'id' => $request->input('id'),
+            'status' => $request->input('status'),
         ]);
 
         /*

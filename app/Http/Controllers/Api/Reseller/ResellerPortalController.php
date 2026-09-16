@@ -204,7 +204,10 @@ class ResellerPortalController extends Controller
                 'nomor_pelanggan' => $nomorPelanggan,
                 'username' => $nomorPelanggan,
                 'password' => $nomorPelanggan,
-                'password_sudah_dibuat' => true,
+                // Password default TIDAK ditandai sudah dibuat supaya
+                // pelanggan reseller diwajibkan membuat password sendiri
+                // (sama seperti alur pelanggan reguler via aktivasi).
+                'password_sudah_dibuat' => false,
 
                 // Gunakan hari ini sebagai hari penagihan awal.
                 'tanggal_tagihan' => now()->day,

@@ -31,6 +31,8 @@ class Admin extends Authenticatable
 
     protected $hidden = [
         'password',
+        'otp_code',
+        'otp_expires_at',
     ];
 
     protected $casts = [

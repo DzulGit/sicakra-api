@@ -23,6 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'pastikan.password' => \App\Http\Middleware\PastikanPasswordSudahDibuat::class,
             'peran' => \App\Http\Middleware\PastikanPeranAdmin::class,
         ]);
+
+        $middleware->api(append: [
+            'throttle:api',
+        ]);
+
+        $middleware->prepend([
+            \App\Http\Middleware\EnsureSecurityHeaders::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {

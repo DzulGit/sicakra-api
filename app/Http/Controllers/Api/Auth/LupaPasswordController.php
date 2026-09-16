@@ -24,19 +24,15 @@ class LupaPasswordController extends Controller
 
         $pelanggan = Pelanggan::where('email', $request->validated('email'))->first();
 
-        if (! $pelanggan) {
-            throw ValidationException::withMessages([
-                'email' => ['Email tidak terdaftar. Periksa kembali email Anda.'],
-            ]);
+        if ($pelanggan) {
+            $token = Str::random(60);
+            DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $pelanggan->email],
+                ['token' => Hash::make($token), 'created_at' => now()],
+            );
+
+            $pelanggan->notify(new ResetPasswordNotification($token));
         }
-
-        $token = Str::random(60);
-        DB::table('password_reset_tokens')->updateOrInsert(
-            ['email' => $pelanggan->email],
-            ['token' => $token, 'created_at' => now()],
-        );
-
-        $pelanggan->notify(new ResetPasswordNotification($token));
 
         return response()->json([
             'message' => 'Link reset password telah dikirim ke email Anda.',
@@ -48,15 +44,11 @@ class LupaPasswordController extends Controller
         $email = $request->validated('email');
         $pelanggan = Pelanggan::where('email', $email)->first();
 
-        if (! $pelanggan) {
-            throw ValidationException::withMessages([
-                'email' => ['Email tidak terdaftar.'],
-            ]);
-        }
+        $record = $pelanggan
+            ? DB::table('password_reset_tokens')->where('email', $email)->first()
+            : null;
 
-        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
-
-        if (! $record || ! hash_equals($record->token, $request->validated('token'))) {
+        if (! $pelanggan || ! $record || ! Hash::check($request->validated('token'), $record->token)) {
             throw ValidationException::withMessages([
                 'token' => ['Token reset tidak valid.'],
             ]);
@@ -75,6 +67,9 @@ class LupaPasswordController extends Controller
             'password' => $request->validated('password'),
             'password_sudah_dibuat' => true,
         ]);
+
+        // Cabut semua token supaya sesi lama tidak menempel setelah reset.
+        $pelanggan->tokens()->delete();
 
         DB::table('password_reset_tokens')->where('email', $email)->delete();
 

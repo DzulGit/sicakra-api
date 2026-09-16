@@ -64,6 +64,9 @@ class AdminController extends Controller
 
         $admin = $this->adminRepository->update($admin, ['status_aktif' => false]);
 
+        // Cabut semua token supaya admin nonaktif tidak punya akses lagi.
+        $admin->tokens()->delete();
+
         return response()->json(['data' => $admin, 'message' => 'Admin berhasil dinonaktifkan.']);
     }
 }
