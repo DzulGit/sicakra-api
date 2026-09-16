@@ -20,6 +20,8 @@ use App\Repositories\Contracts\AdminRepositoryInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -129,6 +131,38 @@ class ResellerController extends Controller
             ->paginate(20);
 
         return response()->json(['data' => $tagihan]);
+    }
+
+    /**
+     * Shadow login — buat token temporer supaya admin bisa masuk
+     * ke portal reseller tanpa mengganggu sesi aktif.
+     * Hanya boleh dipanggil oleh admin operasional/super_admin.
+     */
+    public function shadow(Admin $reseller)
+    {
+        if ($reseller->peran !== PeranAdminEnum::RESELLER || ! $reseller->status_aktif) {
+            abort(404);
+        }
+
+        // Token baru, tanpa menghapus token lama reseller (sesi reseller tetap jalan).
+        $token = $reseller->createToken('shadow-' . auth()->id())->plainTextToken;
+
+        Log::info('Shadow login initiated', [
+            'admin_id' => auth()->id(),
+            'reseller_id' => $reseller->id,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'token' => $token,
+                'reseller' => [
+                    'id' => $reseller->id,
+                    'nama_lengkap' => $reseller->nama_lengkap,
+                    'peran' => $reseller->peran,
+                    'foto_profil' => $reseller->foto_profil,
+                ],
+            ],
+        ]);
     }
 
     private const NAMA_BULAN = [

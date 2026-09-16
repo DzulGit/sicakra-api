@@ -95,6 +95,7 @@ Route::prefix('admin')->group(function () {
             Route::get('reseller/{reseller}/pelanggan/{pelanggan}', [ResellerController::class, 'pelangganDetail']);
             Route::get('reseller/{reseller}/paket', [ResellerController::class, 'paket']);
             Route::get('reseller/{reseller}/tagihan', [ResellerController::class, 'tagihan']);
+            Route::post('reseller/{reseller}/shadow', [ResellerController::class, 'shadow']);
 
             Route::patch('/laporan-kendala/{laporanKendala}/tindak-lanjut', [LaporanKendalaController::class, 'tindakLanjut']);
         });
