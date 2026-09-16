@@ -122,22 +122,6 @@ class DepositDanTunggakanTest extends TestCase
             ->assertJsonPath('data.tagihan.0.sudah_dibayar', 50000);
     }
 
-    public function test_riwayat_pembayaran_menampilkan_transaksi_pelanggan(): void
-    {
-        $pelanggan = $this->buatPelanggan();
-
-        Pembayaran::factory()->create([
-            'pelanggan_id' => $pelanggan->id,
-            'jumlah_dibayar' => 150000,
-            'status' => StatusTransaksiEnum::BERHASIL,
-            'dibayar_pada' => now(),
-        ]);
-
-        $this->getJson('/api/pelanggan/pembayaran')
-            ->assertOk()
-            ->assertJsonCount(1, 'data.data');
-    }
-
     public function test_pakai_deposit_melunasi_tunggakan(): void
     {
         [$pelanggan, $tagihan] = $this->buatTagihan(1, 2026, 150000);

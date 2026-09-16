@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Eloquent;
 
+use App\Enums\StatusPembayaranEnum;
 use App\Filters\TagihanFilter;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
@@ -23,6 +24,7 @@ class TagihanRepository implements TagihanRepositoryInterface
     {
         $query = Tagihan::query()
             ->with('layananInternet.pelanggan')
+            ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
             ->whereHas('layananInternet.pelanggan', function ($query) {$query->whereNull('reseller_id');})
             ->latest();
 

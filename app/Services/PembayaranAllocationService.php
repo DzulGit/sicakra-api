@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Models\MutasiSaldoKredit;
@@ -600,6 +601,8 @@ class PembayaranAllocationService
         );
 
         $totalTagihan = (float) $tagihan->total_tagihan;
+        $telahTerbayar = round($sudahDibayar + $sudahDipakaiKredit, 2);
+        $sisa = round($telahTerbayar - $totalTagihan, 2);
 
         return [
             'id' => $tagihan->id,
@@ -613,6 +616,8 @@ class PembayaranAllocationService
                 $sudahDipakaiKredit,
                 2
             ),
+            'telah_terbayar' => $telahTerbayar,
+            'sisa' => $sisa,
             'sisa_tagihan' => round(
                 max(
                     0,
@@ -622,10 +627,11 @@ class PembayaranAllocationService
                 ),
                 2
             ),
+            'status' => $this->hitungStatusTagihan($tagihan, $telahTerbayar, $sisa),
             'status_pembayaran' => $tagihan->status_pembayaran->value,
-            'status_tampilan' => round($sudahDibayar + $sudahDipakaiKredit, 2) <= 0
+            'status_tampilan' => $telahTerbayar <= 0
                 ? 'belum_bayar'
-                : (round(max(0, $totalTagihan - $sudahDibayar - $sudahDipakaiKredit), 2) <= 0
+                : ($sisa >= 0
                     ? 'lunas'
                     : 'sedang_dicicil'),
             'dibayar_pada' => $tagihan->dibayar_pada?->toDateTimeString(),
@@ -633,6 +639,44 @@ class PembayaranAllocationService
                 ? $this->waktuWib($tagihan->dibayar_pada)
                 : null,
         ];
+    }
+
+    /**
+     * Hitung status tagihan secara dinamis berbasis keuangan aktual.
+     *
+     * Precedence:
+     *  1. Lunas — sisa >= 0
+     *  2. Tertunggak — sisa < 0, periode lampau, layanan aktif
+     *  3. Sedang Cicil — telah_terbayar > 0
+     *  4. Belum Bayar — telah_terbayar == 0
+     */
+    private function hitungStatusTagihan(
+        Tagihan $tagihan,
+        float $telahTerbayar,
+        float $sisa,
+    ): string {
+        if ($sisa >= 0) {
+            return 'Lunas';
+        }
+
+        $tagihan->loadMissing('layananInternet');
+
+        $sekarang = now('Asia/Jakarta');
+        $periodeLebihLama =
+            $tagihan->periode_tahun < $sekarang->year
+            || (
+                $tagihan->periode_tahun === $sekarang->year
+                && $tagihan->periode_bulan < $sekarang->month
+            );
+
+        if (
+            $periodeLebihLama
+            && $tagihan->layananInternet?->status === StatusLayananEnum::AKTIF
+        ) {
+            return 'Tertunggak';
+        }
+
+        return $telahTerbayar > 0 ? 'Sedang Cicil' : 'Belum Bayar';
     }
 
     /**

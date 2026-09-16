@@ -40,12 +40,23 @@ class TagihanController extends Controller
     {
         $resellerId = $request->user()->id;
 
-        $tagihan = Tagihan::whereHas('layananInternet.pelanggan', function ($query) use ($resellerId) {
-            $query->where('reseller_id', $resellerId);
-        })
-        ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
-        ->latest()
-        ->paginate($request->integer('per_page', 10));
+        $tagihan = Tagihan::where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
+            ->whereHas('layananInternet.pelanggan', function ($query) use ($resellerId) {
+                $query->where('reseller_id', $resellerId);
+            })
+            ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
+            ->latest()
+            ->paginate($request->integer('per_page', 10));
+
+        $tagihan->getCollection()->transform(function (Tagihan $item) {
+            $detail = $this->pembayaranAllocationService->detailTagihan($item);
+
+            foreach (['telah_terbayar', 'sisa', 'sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status', 'status_tampilan'] as $key) {
+                $item->setAttribute($key, $detail[$key]);
+            }
+
+            return $item;
+        });
 
         return response()->json(['data' => $tagihan]);
     }
@@ -58,7 +69,7 @@ class TagihanController extends Controller
 
         $detail = $this->pembayaranAllocationService->detailTagihan($tagihan);
 
-        foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status_tampilan', 'tanggal_lunas'] as $key) {
+        foreach (['telah_terbayar', 'sisa', 'sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan', 'status', 'status_tampilan', 'tanggal_lunas'] as $key) {
             $tagihan->setAttribute($key, $detail[$key]);
         }
 
