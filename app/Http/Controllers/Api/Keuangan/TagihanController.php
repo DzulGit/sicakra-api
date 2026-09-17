@@ -552,9 +552,11 @@ class TagihanController extends Controller
     {
         $this->authorize('viewAny', Tagihan::class);
 
-        $perPage = $request->integer('per_page', 20);
+        // per_page=all dipakai frontend untuk menampilkan seluruh baris sekaligus.
+        $perPage = $request->input('per_page') === 'all' ? 100000 : max(1, $request->integer('per_page', 20));
         $periodeBulan = $request->integer('periode_bulan');
         $periodeTahun = $request->integer('periode_tahun');
+        $search = $request->string('search')->trim()->toString();
 
         $query = Tagihan::draft()
             ->whereHas('layananInternet', function ($q) {
@@ -567,6 +569,16 @@ class TagihanController extends Controller
                     });
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
+
+        if ($search !== '') {
+            $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
+                $pq->where(function ($sq) use ($search) {
+                    $sq->where('nama_lengkap', 'like', "%{$search}%")
+                        ->orWhere('nik', 'like', "%{$search}%")
+                        ->orWhere('nomor_pelanggan', 'like', "%{$search}%");
+                });
+            });
+        }
 
         if ($periodeBulan) {
             $query->where('periode_bulan', $periodeBulan);
