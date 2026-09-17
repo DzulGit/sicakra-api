@@ -31,11 +31,17 @@ class TagihanController extends Controller
         private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
-    public function index(TagihanFilter $filter)
+    public function index(TagihanFilter $filter, Request $request)
     {
         $this->authorize('viewAny', Tagihan::class);
 
-        $data = $this->tagihanRepository->paginateSemua($filter);
+        $perPage = $request->string('per_page', '10')->toString();
+
+        if ($perPage === 'all') {
+            $perPage = 100000;
+        }
+
+        $data = $this->tagihanRepository->paginateSemua($filter, (int) $perPage);
 
         $data->getCollection()->transform(function (Tagihan $item) {
             $detail = $this->pembayaranAllocationService

@@ -23,4 +23,14 @@ class TagihanFilter extends QueryFilter
     {
         $builder->where('periode_tahun', $nilai);
     }
+
+    // ?search=budi → cocok NIK / nama / nomor pelanggan
+    protected function search(Builder $builder, string $nilai): void
+    {
+        $builder->whereHas('layananInternet.pelanggan', function ($q) use ($nilai) {
+            $q->where('nama_lengkap', 'like', "%{$nilai}%")
+                ->orWhere('nik', 'like', "%{$nilai}%")
+                ->orWhere('nomor_pelanggan', 'like', "%{$nilai}%");
+        });
+    }
 }

@@ -40,13 +40,26 @@ class TagihanController extends Controller
     {
         $resellerId = $request->user()->id;
 
+        $perPage = $request->string('per_page', '10')->toString();
+
+        if ($perPage === 'all') {
+            $perPage = 100000;
+        }
+
         $tagihan = Tagihan::where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
             ->whereHas('layananInternet.pelanggan', function ($query) use ($resellerId) {
                 $query->where('reseller_id', $resellerId);
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
             ->latest()
-            ->paginate($request->integer('per_page', 10));
+            ->when($request->string('search')->toString(), function ($query, $search) {
+                $query->whereHas('layananInternet.pelanggan', function ($q) use ($search) {
+                    $q->where('nama_lengkap', 'like', "%{$search}%")
+                        ->orWhere('nik', 'like', "%{$search}%")
+                        ->orWhere('nomor_pelanggan', 'like', "%{$search}%");
+                });
+            })
+            ->paginate((int) $perPage);
 
         $tagihan->getCollection()->transform(function (Tagihan $item) {
             $detail = $this->pembayaranAllocationService->detailTagihan($item);
