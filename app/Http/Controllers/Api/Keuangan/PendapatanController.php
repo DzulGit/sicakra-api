@@ -148,8 +148,8 @@ class PendapatanController extends Controller
                 array_filter($saldoKredit, fn ($m) => $m['jenis'] === 'Pemakaian'),
                 'jumlah'
             )),
-            'tagihan_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] === 'Sudah Bayar')),
-            'tagihan_belum_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] !== 'Sudah Bayar')),
+            'tagihan_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] === 'Lunas')),
+            'tagihan_belum_lunas' => count(array_filter($ringkasan, fn ($r) => $r['status'] !== 'Lunas')),
         ];
 
         $pdf = Pdf::loadView('pdf.report-pendapatan', [
@@ -494,7 +494,7 @@ class PendapatanController extends Controller
                 } elseif ($dibayarPembayaran + $dibayarKredit <= 0) {
                     $status = 'Belum Bayar';
                 } else {
-                    $status = 'Sedang Dicicil';
+                    $status = 'Sedang Cicil';
                 }
 
                 $tanggalLunas = $status === 'Lunas'
@@ -965,7 +965,7 @@ class PendapatanController extends Controller
     {
         return match ($status) {
             StatusPembayaranEnum::BELUM_BAYAR => 'Belum Bayar',
-            StatusPembayaranEnum::SUDAH_BAYAR => 'Sudah Bayar',
+            StatusPembayaranEnum::SUDAH_BAYAR => 'Lunas',
             default => '-',
         };
     }

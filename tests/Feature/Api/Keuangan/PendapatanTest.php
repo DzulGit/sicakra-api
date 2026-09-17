@@ -304,7 +304,7 @@ class PendapatanTest extends TestCase
             // A + D: Budi mulai September; Januari..Agustus belum berlangganan, September dicicil.
             $this->assertSame('Belum Berlangganan', $map['Budi|Agustus 2026']['status']);
             $this->assertEmpty($map['Budi|Agustus 2026']['no_tagihan']);
-            $this->assertSame('Sedang Dicicil', $map['Budi|September 2026']['status']);
+            $this->assertSame('Sedang Cicil', $map['Budi|September 2026']['status']);
             $this->assertSame(350000.0, $map['Budi|September 2026']['total']);
             $this->assertSame(150000.0, $map['Budi|September 2026']['dibayar']);
             $this->assertSame(200000.0, $map['Budi|September 2026']['sisa']);

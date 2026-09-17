@@ -62,7 +62,7 @@
         <td class="total-cell">{{ $ringkasanTotal['tagihan_lunas'] }} tagihan</td>
       </tr>
       <tr>
-        <td class="label">Tagihan Belum Lunas / Sedang Dicicil</td>
+        <td class="label">Tagihan Belum Lunas / Sedang Cicil</td>
         <td class="nilai">{{ $ringkasanTotal['tagihan_belum_lunas'] }} tagihan</td>
         <td class="label"></td>
         <td></td>
@@ -91,7 +91,7 @@
         @forelse($ringkasan as $i => $r)
           @php
             $status = match($r['status']) {
-              'Sudah Bayar' => 'lunas',
+              'Lunas' => 'lunas',
               'Belum Bayar' => 'belum',
               default => 'blm',
             };

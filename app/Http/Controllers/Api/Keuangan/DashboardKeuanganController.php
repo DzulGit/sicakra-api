@@ -160,7 +160,7 @@ class DashboardKeuanganController extends Controller
          */
         $labelStatus = [
             StatusPembayaranEnum::BELUM_BAYAR->value => 'Belum Bayar',
-            StatusPembayaranEnum::SUDAH_BAYAR->value => 'Sudah Bayar',
+            StatusPembayaranEnum::SUDAH_BAYAR->value => 'Lunas',
         ];
 
         $distribusiPembayaran = Tagihan::query()
