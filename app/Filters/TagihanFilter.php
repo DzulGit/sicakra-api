@@ -3,6 +3,7 @@
 namespace App\Filters;
 
 use App\Enums\StatusLayananEnum;
+use App\Enums\StatusTransaksiEnum;
 use Illuminate\Database\Eloquent\Builder;
 
 class TagihanFilter extends QueryFilter
@@ -13,26 +14,27 @@ class TagihanFilter extends QueryFilter
     {
         // Ekspresi SQL untuk menghitung total yang sudah terbayar (pembayaran + kredit)
         // sesuai PembayaranAllocationService::hitungTotalPembayaranBerhasil + hitungTotalPemakaianKredit
-        $terbayar = '(SELECT COALESCE(SUM(pt.jumlah_dialokasikan), 0) FROM pembayaran_tagihan pt INNER JOIN pembayaran p ON p.id = pt.pembayaran_id WHERE pt.tagihan_id = tagihan.id AND p.status = ?) + (SELECT COALESCE(SUM(msk.jumlah), 0) FROM mutasi_saldo_kredit msk WHERE msk.tagihan_id = tagihan.id AND msk.jenis = ?)';
-        $params = ['berhasil', 'pemakaian'];
+        $berhasil = StatusTransaksiEnum::BERHASIL->value;
+        $pemakaian = 'pemakaian';
+        $terbayar = "(SELECT COALESCE(SUM(pt.jumlah_dialokasikan), 0) FROM pembayaran_tagihan pt INNER JOIN pembayaran p ON p.id = pt.pembayaran_id WHERE pt.tagihan_id = tagihan.id AND p.status = '{$berhasil}') + (SELECT COALESCE(SUM(msk.jumlah), 0) FROM mutasi_saldo_kredit msk WHERE msk.tagihan_id = tagihan.id AND msk.jenis = '{$pemakaian}')";
 
         $tahun = now('Asia/Jakarta')->year;
         $bulan = now('Asia/Jakarta')->month;
         $periodeLampau = "(tagihan.periode_tahun < {$tahun} OR (tagihan.periode_tahun = {$tahun} AND tagihan.periode_bulan < {$bulan}))";
-        $layananAktif = "EXISTS (SELECT 1 FROM layanan_internet li WHERE li.id = tagihan.layanan_internet_id AND li.status = ?)";
+        $layananAktif = "EXISTS (SELECT 1 FROM layanan_internet li WHERE li.id = tagihan.layanan_internet_id AND li.status = '" . StatusLayananEnum::AKTIF->value . "')";
 
         match ($nilai) {
-            'lunas' => $builder->whereRaw("({$terbayar}) >= total_tagihan", $params),
+            'lunas' => $builder->whereRaw("({$terbayar}) >= total_tagihan"),
             'belum_bayar' => $this->bukanTertunggak(
-                $builder->whereRaw("({$terbayar}) = 0", $params),
+                $builder->whereRaw("({$terbayar}) = 0"),
                 $periodeLampau,
                 $layananAktif,
             ),
             'tertunggak' => $builder
-                ->whereRaw("({$terbayar}) < total_tagihan AND {$periodeLampau}", $params)
-                ->whereRaw($layananAktif, [StatusLayananEnum::AKTIF->value]),
+                ->whereRaw("({$terbayar}) < total_tagihan AND {$periodeLampau}")
+                ->whereRaw($layananAktif),
             'sedang_dicicil' => $this->bukanTertunggak(
-                $builder->whereRaw("({$terbayar}) > 0 AND ({$terbayar}) < total_tagihan", $params),
+                $builder->whereRaw("({$terbayar}) > 0 AND ({$terbayar}) < total_tagihan"),
                 $periodeLampau,
                 $layananAktif,
             ),
@@ -45,7 +47,7 @@ class TagihanFilter extends QueryFilter
         return $builder->where(function ($q) use ($periodeLampau, $layananAktif) {
             // bukan tertunggak = periode bukan lampau ATAU layanan tidak aktif
             $q->whereRaw("NOT ({$periodeLampau})")
-              ->orWhereRaw("NOT ({$layananAktif})", [StatusLayananEnum::AKTIF->value]);
+              ->orWhereRaw("NOT ({$layananAktif})");
         });
     }
 

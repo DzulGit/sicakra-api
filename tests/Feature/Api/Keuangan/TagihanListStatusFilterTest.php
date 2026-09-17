@@ -119,4 +119,18 @@ class TagihanListStatusFilterTest extends TestCase
 
         $this->assertSame($cicil->id, $json->json('data.data.0.id'));
     }
+
+    public function test_param_lama_status_pembayaran_diabaikan(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        [$pelanggan, $cicil] = $this->buatTagihan(250000);
+        $this->service->buatPembayaranTunai($pelanggan, 100000, ['dibayar_oleh' => 'Admin']);
+        $this->buatTagihan(250000);
+
+        $this->getJson('/api/admin/keuangan/tagihan?status_pembayaran=belum_bayar&status=sedang_dicicil')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+    }
 }
