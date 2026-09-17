@@ -40,13 +40,29 @@ class TagihanController extends Controller
     {
         $resellerId = $request->user()->id;
 
+        $perPage = $request->string('per_page', '10')->toString();
+
+        if ($perPage === 'all') {
+            $perPage = 100000;
+        }
+
         $tagihan = Tagihan::where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
             ->whereHas('layananInternet.pelanggan', function ($query) use ($resellerId) {
                 $query->where('reseller_id', $resellerId);
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
             ->latest()
-            ->paginate($request->integer('per_page', 10));
+            ->when($request->string('search')->trim()->toString(), function ($query, $search) {
+                $search = strtolower($search);
+                $query->whereHas('layananInternet.pelanggan', function ($q) use ($search) {
+                    $q->where(function ($sq) use ($search) {
+                        $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                            ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                            ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
+                    });
+                });
+            })
+            ->paginate((int) $perPage);
 
         $tagihan->getCollection()->transform(function (Tagihan $item) {
             $detail = $this->pembayaranAllocationService->detailTagihan($item);
@@ -337,9 +353,11 @@ class TagihanController extends Controller
     public function draftIndex(Request $request)
     {
         $resellerId = $request->user()->id;
-        $perPage = $request->integer('per_page', 20);
+        // per_page=all dipakai frontend untuk menampilkan seluruh baris sekaligus.
+        $perPage = $request->input('per_page') === 'all' ? 100000 : max(1, $request->integer('per_page', 20));
         $periodeBulan = $request->integer('periode_bulan');
         $periodeTahun = $request->integer('periode_tahun');
+        $search = $request->string('search')->trim()->toString();
 
         $query = Tagihan::draft()
             ->whereHas('layananInternet.pelanggan', function ($q) use ($resellerId) {
@@ -355,6 +373,17 @@ class TagihanController extends Controller
                     });
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
+
+        if ($search !== '') {
+            $search = strtolower($search);
+            $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
+                $pq->where(function ($sq) use ($search) {
+                    $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
+                });
+            });
+        }
 
         if ($periodeBulan) {
             $query->where('periode_bulan', $periodeBulan);

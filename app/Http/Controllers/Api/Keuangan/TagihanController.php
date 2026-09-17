@@ -31,11 +31,17 @@ class TagihanController extends Controller
         private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
-    public function index(TagihanFilter $filter)
+    public function index(TagihanFilter $filter, Request $request)
     {
         $this->authorize('viewAny', Tagihan::class);
 
-        $data = $this->tagihanRepository->paginateSemua($filter);
+        $perPage = $request->string('per_page', '10')->toString();
+
+        if ($perPage === 'all') {
+            $perPage = 100000;
+        }
+
+        $data = $this->tagihanRepository->paginateSemua($filter, (int) $perPage);
 
         $data->getCollection()->transform(function (Tagihan $item) {
             $detail = $this->pembayaranAllocationService
@@ -552,9 +558,11 @@ class TagihanController extends Controller
     {
         $this->authorize('viewAny', Tagihan::class);
 
-        $perPage = $request->integer('per_page', 20);
+        // per_page=all dipakai frontend untuk menampilkan seluruh baris sekaligus.
+        $perPage = $request->input('per_page') === 'all' ? 100000 : max(1, $request->integer('per_page', 20));
         $periodeBulan = $request->integer('periode_bulan');
         $periodeTahun = $request->integer('periode_tahun');
+        $search = $request->string('search')->trim()->toString();
 
         $query = Tagihan::draft()
             ->whereHas('layananInternet', function ($q) {
@@ -567,6 +575,17 @@ class TagihanController extends Controller
                     });
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
+
+        if ($search !== '') {
+            $search = strtolower($search);
+            $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
+                $pq->where(function ($sq) use ($search) {
+                    $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
+                });
+            });
+        }
 
         if ($periodeBulan) {
             $query->where('periode_bulan', $periodeBulan);
