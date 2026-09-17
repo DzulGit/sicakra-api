@@ -24,13 +24,17 @@ class TagihanFilter extends QueryFilter
         $builder->where('periode_tahun', $nilai);
     }
 
-    // ?search=budi → cocok NIK / nama / nomor pelanggan
+    // ?search=budi → cocok NIK / nama / nomor pelanggan (case-insensitive)
     protected function search(Builder $builder, string $nilai): void
     {
+        $nilai = strtolower($nilai);
+
         $builder->whereHas('layananInternet.pelanggan', function ($q) use ($nilai) {
-            $q->where('nama_lengkap', 'like', "%{$nilai}%")
-                ->orWhere('nik', 'like', "%{$nilai}%")
-                ->orWhere('nomor_pelanggan', 'like', "%{$nilai}%");
+            $q->where(function ($sq) use ($nilai) {
+                $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$nilai}%"])
+                    ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$nilai}%"])
+                    ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$nilai}%"]);
+            });
         });
     }
 }

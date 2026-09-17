@@ -60,6 +60,11 @@ class TerbitkanTagihanDraftIndexTest extends TestCase
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.id', $ini->id);
 
+        $this->getJson('/api/admin/keuangan/tagihan/draft?search=budi%20santoso')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $ini->id);
+
         $this->getJson('/api/admin/keuangan/tagihan/draft?search=' . urlencode($bukan->layananInternet->pelanggan->nik))
             ->assertOk()
             ->assertJsonCount(1, 'data.data')

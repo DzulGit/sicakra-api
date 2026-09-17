@@ -577,11 +577,12 @@ class TagihanController extends Controller
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
 
         if ($search !== '') {
+            $search = strtolower($search);
             $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
                 $pq->where(function ($sq) use ($search) {
-                    $sq->where('nama_lengkap', 'like', "%{$search}%")
-                        ->orWhere('nik', 'like', "%{$search}%")
-                        ->orWhere('nomor_pelanggan', 'like', "%{$search}%");
+                    $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
                 });
             });
         }

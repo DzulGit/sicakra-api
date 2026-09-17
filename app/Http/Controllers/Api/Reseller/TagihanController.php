@@ -52,11 +52,14 @@ class TagihanController extends Controller
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
             ->latest()
-            ->when($request->string('search')->toString(), function ($query, $search) {
+            ->when($request->string('search')->trim()->toString(), function ($query, $search) {
+                $search = strtolower($search);
                 $query->whereHas('layananInternet.pelanggan', function ($q) use ($search) {
-                    $q->where('nama_lengkap', 'like', "%{$search}%")
-                        ->orWhere('nik', 'like', "%{$search}%")
-                        ->orWhere('nomor_pelanggan', 'like', "%{$search}%");
+                    $q->where(function ($sq) use ($search) {
+                        $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                            ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                            ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
+                    });
                 });
             })
             ->paginate((int) $perPage);
@@ -372,11 +375,12 @@ class TagihanController extends Controller
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
 
         if ($search !== '') {
+            $search = strtolower($search);
             $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
                 $pq->where(function ($sq) use ($search) {
-                    $sq->where('nama_lengkap', 'like', "%{$search}%")
-                        ->orWhere('nik', 'like', "%{$search}%")
-                        ->orWhere('nomor_pelanggan', 'like', "%{$search}%");
+                    $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
                 });
             });
         }

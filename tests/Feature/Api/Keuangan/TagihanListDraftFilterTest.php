@@ -61,6 +61,28 @@ class TagihanListDraftFilterTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.id', $bukan->id);
+
+        $this->getJson('/api/admin/keuangan/tagihan?search=sri%20wahyu')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.data');
+
+        $pelanggan = Pelanggan::factory()->create(['nama_lengkap' => 'Sri Wahyu']);
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusLayananEnum::AKTIF,
+        ]);
+        $t = now('Asia/Jakarta');
+        $sri = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'periode_bulan' => $t->month,
+            'periode_tahun' => $t->year,
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+        ]);
+
+        $this->getJson('/api/admin/keuangan/tagihan?search=sri%20wahyu')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $sri->id);
     }
 
     public function test_per_page_all_menampilkan_semua_tagihan(): void
