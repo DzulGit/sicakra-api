@@ -7,6 +7,7 @@ use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Events\PembayaranBerhasil;
 use App\Events\TagihanDibuat;
+use App\Filters\TagihanFilter;
 use App\Http\Controllers\Controller;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
@@ -51,18 +52,12 @@ class TagihanController extends Controller
                 $query->where('reseller_id', $resellerId);
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan'])
-            ->latest()
-            ->when($request->string('search')->trim()->toString(), function ($query, $search) {
-                $search = strtolower($search);
-                $query->whereHas('layananInternet.pelanggan', function ($q) use ($search) {
-                    $q->where(function ($sq) use ($search) {
-                        $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
-                            ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
-                            ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
-                    });
-                });
-            })
-            ->paginate((int) $perPage);
+            ->latest();
+
+        $filter = new TagihanFilter($request);
+        $filter->apply($tagihan);
+
+        $tagihan = $tagihan->paginate((int) $perPage);
 
         $tagihan->getCollection()->transform(function (Tagihan $item) {
             $detail = $this->pembayaranAllocationService->detailTagihan($item);
