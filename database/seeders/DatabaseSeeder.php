@@ -24,6 +24,9 @@ class DatabaseSeeder extends Seeder
             // Reseller seed HARUS setelah PelangganSeeder karena akun reseller
             // (reseller@sicakra.com) diciptakan oleh PelangganSeeder.
             ResellerPaketInternetSeeder::class,
+            // Dataset skenario keuangan besar — butuh master data (admin keuangan,
+            // paket, reseller@sicakra.com) & paket reseller dari seeder sebelumnya.
+            FinanceScenarioSeeder::class,
         ]);
     }
 }
