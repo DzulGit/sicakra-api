@@ -134,7 +134,17 @@ class ResellerPortalController extends Controller
             foreach ($layanan->tagihan as $tagihan) {
                 $detail = $this->pembayaranAllocationService->detailTagihan($tagihan);
 
-                foreach (['sudah_dibayar', 'saldo_kredit_digunakan', 'sisa_tagihan'] as $kunci) {
+                foreach ([
+                    'telah_terbayar',
+                    'sisa',
+                    'sudah_dibayar',
+                    'saldo_kredit_digunakan',
+                    'sisa_tagihan',
+                    'status',
+                    'status_tampilan',
+                    'tanggal_lunas',
+                    'diterbitkan_pada',
+                ] as $kunci) {
                     $tagihan->setAttribute($kunci, $detail[$kunci]);
                 }
 
@@ -144,6 +154,11 @@ class ResellerPortalController extends Controller
                 );
             }
         }
+
+        $pelanggan->setAttribute(
+            'ringkasan_tagihan',
+            $this->pembayaranAllocationService->ringkasanTagihanPelanggan($pelanggan),
+        );
 
         return response()->json(['data' => $pelanggan]);
     }

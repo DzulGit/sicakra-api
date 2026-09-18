@@ -108,7 +108,6 @@ Route::prefix('admin')->group(function () {
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
             Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
-            Route::post('pelanggan/tanggal-tagihan/bulk', [PelangganController::class, 'bulkAturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
 
             });

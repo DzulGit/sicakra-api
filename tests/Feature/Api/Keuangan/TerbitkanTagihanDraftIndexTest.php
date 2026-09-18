@@ -29,7 +29,7 @@ class TerbitkanTagihanDraftIndexTest extends TestCase
             'status' => StatusLayananEnum::AKTIF,
         ]);
 
-        // "Permah punya tagihan" — prasyarat draft nomor 2 boleh di-list.
+        // Tagihan periode lama sebagai konteks riwayat pelanggan.
         Tagihan::factory()->create([
             'layanan_internet_id' => $layanan->id,
             'periode_bulan' => 1,

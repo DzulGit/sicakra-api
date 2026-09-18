@@ -409,6 +409,12 @@ class TagihanController extends Controller
             ], 422);
         }
 
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::BELUM_DITERBITKAN) {
+            return response()->json([
+                'message' => 'Tagihan belum diterbitkan.',
+            ], 422);
+        }
+
         $sisaTagihan = $this->hitungSisaTagihan($tagihan);
 
         if (
@@ -477,6 +483,12 @@ class TagihanController extends Controller
             ], 422);
         }
 
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::BELUM_DITERBITKAN) {
+            return response()->json([
+                'message' => 'Tagihan belum diterbitkan.',
+            ], 422);
+        }
+
         $sisaTagihan = $this->hitungSisaTagihan($tagihan);
 
         if ($sisaTagihan <= 0) {
@@ -530,7 +542,7 @@ class TagihanController extends Controller
 
     /**
      * List tagihan draft (belum_diterbitkan) untuk halaman Terbitkan Tagihan.
-     * Hanya tampilkan tagihan dari pelanggan yang AKTIF dan pernah punya tagihan sebelumnya.
+     * Hanya tampilkan tagihan draft dari layanan AKTIF.
      */
     public function draftIndex(Request $request)
     {
@@ -544,13 +556,7 @@ class TagihanController extends Controller
 
         $query = Tagihan::draft()
             ->whereHas('layananInternet', function ($q) {
-                $q->where('status', StatusLayananEnum::AKTIF)
-                    ->whereHas('pelanggan', function ($pq) {
-                        // Validasi: pelanggan harus pernah punya tagihan sebelumnya
-                        $pq->whereHas('layananInternet.tagihan', function ($tq) {
-                            $tq->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN);
-                        });
-                    });
+                $q->where('status', StatusLayananEnum::AKTIF);
             })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
 
@@ -578,10 +584,8 @@ class TagihanController extends Controller
     }
 
     /**
-     * Terbitkan tagihan draft — ubah status ke belum_bayar & dispatch TagihanDibuat event
-     * untuk trigger pembuatan Xendit invoice + notifikasi ke pelanggan.
-     *
-     * Validasi: tagihan harus belum_diterbitkan, dan pelanggan harus pernah punya tagihan.
+     * Terbitkan tagihan draft — ubah status ke belum_bayar, catat diterbitkan_pada,
+     * & dispatch TagihanDibuat event untuk trigger Xendit invoice + notifikasi.
      */
     public function terbitkan(Request $request)
     {
@@ -613,23 +617,9 @@ class TagihanController extends Controller
                     continue;
                 }
 
-                // Validasi: pelanggan harus pernah punya tagihan sebelumnya
-                $layanan = $tagihan->layananInternet;
-                if (! $layanan || ! $layanan->pelanggan) {
+                if (! $tagihan->layananInternet?->pelanggan) {
                     $gagal++;
                     $pesanGagal[] = "Tagihan #{$tagihanId}: pelanggan tidak ditemukan.";
-                    continue;
-                }
-
-                $pelanggan = $layanan->pelanggan;
-                $sudahPunyaTagihan = Tagihan::where('layanan_internet_id', $layanan->id)
-                    ->where('id', '!=', $tagihanId)
-                    ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
-                    ->exists();
-
-                if (! $sudahPunyaTagihan) {
-                    $gagal++;
-                    $pesanGagal[] = "Pelanggan {$pelanggan->nama_lengkap} belum pernah punya tagihan sebelumnya.";
                     continue;
                 }
 
@@ -643,6 +633,7 @@ class TagihanController extends Controller
                 // Ubah status & dispatch event
                 $tagihan->update([
                     'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+                    'diterbitkan_pada' => now(),
                 ]);
 
                 TagihanDibuat::dispatch($tagihan);

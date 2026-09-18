@@ -35,6 +35,7 @@ class TagihanRepository implements TagihanRepositoryInterface
     {
         $query = Tagihan::query()
             ->whereHas('layananInternet', fn ($q) => $q->where('pelanggan_id', $pelangganId))
+            ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
             ->latest();
 
         return $filter->apply($query)->paginate($perPage);

@@ -33,11 +33,13 @@ class Tagihan extends Model
         'xendit_invoice_retry_count',
         'retry_count',
         'dibayar_pada',
+        'diterbitkan_pada',
     ];
 
     protected $casts = [
         'status_pembayaran' => StatusPembayaranEnum::class,
         'dibayar_pada' => 'datetime',
+        'diterbitkan_pada' => 'datetime',
         'xendit_invoice_expires_at' => 'datetime',
         'harga_snapshot' => 'decimal:2',
         'total_tagihan' => 'decimal:2',

@@ -603,6 +603,7 @@ class PembayaranAllocationService
         $totalTagihan = (float) $tagihan->total_tagihan;
         $telahTerbayar = round($sudahDibayar + $sudahDipakaiKredit, 2);
         $sisa = round($telahTerbayar - $totalTagihan, 2);
+        $draft = $tagihan->status_pembayaran === StatusPembayaranEnum::BELUM_DITERBITKAN;
 
         return [
             'id' => $tagihan->id,
@@ -627,18 +628,60 @@ class PembayaranAllocationService
                 ),
                 2
             ),
-            'status' => $this->hitungStatusTagihan($tagihan, $telahTerbayar, $sisa),
+            'status' => $draft
+                ? 'Belum Diterbitkan'
+                : $this->hitungStatusTagihan($tagihan, $telahTerbayar, $sisa),
             'status_pembayaran' => $tagihan->status_pembayaran->value,
-            'status_tampilan' => $telahTerbayar <= 0
-                ? 'belum_bayar'
-                : ($sisa >= 0
-                    ? 'lunas'
-                    : 'sedang_dicicil'),
+            'status_tampilan' => $draft
+                ? 'belum_diterbitkan'
+                : ($telahTerbayar <= 0
+                    ? 'belum_bayar'
+                    : ($sisa >= 0
+                        ? 'lunas'
+                        : 'sedang_dicicil')),
             'dibayar_pada' => $tagihan->dibayar_pada?->toDateTimeString(),
+            'diterbitkan_pada' => $tagihan->diterbitkan_pada?->toDateTimeString(),
             'tanggal_lunas' => $tagihan->dibayar_pada
                 ? $this->waktuWib($tagihan->dibayar_pada)
                 : null,
         ];
+    }
+
+    /**
+     * Jumlah tagihan per status finansial untuk 1 pelanggan.
+     * Draft (belum_diterbitkan) tidak dihitung — belum payable/outstanding.
+     *
+     * @return array{belum_bayar:int, sedang_cicil:int, tertunggak:int, lunas:int}
+     */
+    public function ringkasanTagihanPelanggan(Pelanggan $pelanggan): array
+    {
+        $ringkasan = [
+            'belum_bayar' => 0,
+            'sedang_cicil' => 0,
+            'tertunggak' => 0,
+            'lunas' => 0,
+        ];
+
+        $tagihan = Tagihan::query()
+            ->whereHas('layananInternet', fn ($q) => $q->where('pelanggan_id', $pelanggan->id))
+            ->where('status_pembayaran', '!=', StatusPembayaranEnum::BELUM_DITERBITKAN)
+            ->get();
+
+        foreach ($tagihan as $item) {
+            $kunci = match ($this->detailTagihan($item)['status']) {
+                'Belum Bayar' => 'belum_bayar',
+                'Sedang Cicil' => 'sedang_cicil',
+                'Tertunggak' => 'tertunggak',
+                'Lunas' => 'lunas',
+                default => null,
+            };
+
+            if ($kunci !== null) {
+                $ringkasan[$kunci]++;
+            }
+        }
+
+        return $ringkasan;
     }
 
     /**

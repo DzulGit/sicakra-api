@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\TipePaketEnum;
-use App\Events\TagihanDibuat;
 use App\Models\LayananInternet;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
@@ -20,9 +19,9 @@ class GenerateTagihanService
     ) {}
 
     /**
-     * Generate 1 tagihan untuk 1 layanan pada periode tertentu.
-     * Idempotent: kalau tagihan periode itu sudah ada, tidak dibuat dobel.
-     * Dipakai untuk generate manual admin (emergency) & tagihan pertama.
+     * Generate 1 tagihan (draft/belum_diterbitkan) untuk 1 layanan pada periode
+     * tertentu. Idempotent: kalau periode itu sudah ter-cover, tidak dibuat dobel.
+     * Dipakai generate manual admin (emergency) — tagihan baru aktif setelah diterbitkan.
      */
     public function generateUntukLayanan(
         LayananInternet $layanan,
@@ -30,36 +29,7 @@ class GenerateTagihanService
         int $periodeTahun,
         int $jumlahBulan = 1,
     ): ?Tagihan {
-        if ($layanan->status !== StatusLayananEnum::AKTIF) {
-            return null;
-        }
-
-        if ($this->periodeSudahTercover($layanan, $periodeBulan, $periodeTahun)) {
-            return null;
-        }
-
-        return DB::transaction(function () use ($layanan, $periodeBulan, $periodeTahun, $jumlahBulan) {
-            [$namaPaket, $kecepatan, $harga] = $this->snapshotPaket($layanan);
-
-            $nomorTagihan = $this->generatorNomor->generate(Tagihan::class, 'nomor_tagihan', 'INV');
-
-            $tagihan = $this->tagihanRepository->create([
-                'nomor_tagihan' => $nomorTagihan,
-                'layanan_internet_id' => $layanan->id,
-                'periode_bulan' => $periodeBulan,
-                'periode_tahun' => $periodeTahun,
-                'nama_paket_snapshot' => $namaPaket,
-                'kecepatan_snapshot_mbps' => $kecepatan,
-                'harga_snapshot' => $harga,
-                'total_tagihan' => $harga * $jumlahBulan,
-                'jumlah_bulan' => $jumlahBulan,
-                'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
-            ]);
-
-            TagihanDibuat::dispatch($tagihan);
-
-            return $tagihan;
-        });
+        return $this->generateDraftUntukLayanan($layanan, $periodeBulan, $periodeTahun, $jumlahBulan);
     }
 
     /**
@@ -242,10 +212,8 @@ class GenerateTagihanService
                 'harga_snapshot' => $hargaBulanan,
                 'total_tagihan' => $totalTagihan,
                 'jumlah_bulan' => 1,
-                'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+                'status_pembayaran' => StatusPembayaranEnum::BELUM_DITERBITKAN,
             ]);
-
-            TagihanDibuat::dispatch($tagihan);
 
             return $tagihan;
         });

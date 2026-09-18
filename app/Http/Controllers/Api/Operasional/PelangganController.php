@@ -12,6 +12,7 @@ use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Notifications\PelangganBaruDariResellerNotification;
 use App\Repositories\Contracts\PelangganRepositoryInterface;
+use App\Services\PembayaranAllocationService;
 use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
 use App\Support\KompresiGambar;
@@ -25,12 +26,16 @@ class PelangganController extends Controller
         private readonly PelangganRepositoryInterface $pelangganRepository,
         private readonly SiklusPenagihanService $siklusPenagihanService,
         private readonly PermohonanLayananService $permohonanLayananService,
+        private readonly PembayaranAllocationService $pembayaranAllocationService,
     ) {}
 
-    public function index(PelangganFilter $filter)
+    public function index(Request $request, PelangganFilter $filter)
     {
+        // per_page=all dipakai frontend untuk menampilkan seluruh baris sekaligus.
+        $perPage = $request->input('per_page') === 'all' ? 100000 : max(1, $request->integer('per_page', 20));
+
         return response()->json([
-            'data' => $this->pelangganRepository->paginate($filter),
+            'data' => $this->pelangganRepository->paginate($filter, $perPage),
         ]);
     }
 
@@ -105,6 +110,31 @@ class PelangganController extends Controller
             ['layananInternet.paketInternet', 'layananInternet.tagihan', 'permohonanLayanan.paketInternet'],
         );
 
+        foreach ($pelanggan->layananInternet as $layanan) {
+            foreach ($layanan->tagihan as $tagihan) {
+                $detail = $this->pembayaranAllocationService->detailTagihan($tagihan);
+
+                foreach ([
+                    'telah_terbayar',
+                    'sisa',
+                    'sudah_dibayar',
+                    'saldo_kredit_digunakan',
+                    'sisa_tagihan',
+                    'status',
+                    'status_tampilan',
+                    'tanggal_lunas',
+                    'diterbitkan_pada',
+                ] as $kunci) {
+                    $tagihan->setAttribute($kunci, $detail[$kunci]);
+                }
+            }
+        }
+
+        $pelanggan->setAttribute(
+            'ringkasan_tagihan',
+            $this->pembayaranAllocationService->ringkasanTagihanPelanggan($pelanggan),
+        );
+
         return response()->json(['data' => $pelanggan]);
     }
 
@@ -148,35 +178,6 @@ class PelangganController extends Controller
         return response()->json([
             'message' => 'Tanggal penagihan pelanggan berhasil diubah.',
             'data' => $pelanggan->fresh(),
-        ]);
-    }
-
-    /**
-     * "Terapkan untuk Semua" — set tanggal_tagihan massal. Kalau `pelanggan_ids`
-     * dikirim, hanya pelanggan yang terpilih yang diubah; kosongkan untuk semua
-     * pelanggan aktif (yang sudah punya nomor_pelanggan).
-     */
-    public function bulkAturTanggalTagihan(Request $request)
-    {
-        $validated = $request->validate([
-            'tanggal_tagihan' => 'required|integer|min:1|max:31',
-            'pelanggan_ids' => 'sometimes|array',
-            'pelanggan_ids.*' => 'integer|exists:pelanggan,id',
-        ]);
-
-        $query = Pelanggan::query();
-
-        if (! empty($validated['pelanggan_ids'])) {
-            $query->whereIn('id', $validated['pelanggan_ids']);
-        } else {
-            $query->whereNotNull('nomor_pelanggan');
-        }
-
-        $jumlah = $query->update(['tanggal_tagihan' => $validated['tanggal_tagihan']]);
-
-        return response()->json([
-            'message' => "Tanggal penagihan diterapkan ke {$jumlah} pelanggan.",
-            'data' => ['ter_update' => $jumlah],
         ]);
     }
 

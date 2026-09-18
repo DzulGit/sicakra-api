@@ -86,6 +86,12 @@ class TagihanSayaController extends Controller
             'alokasiPembayaran.pembayaran',
         ]);
 
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::BELUM_DITERBITKAN) {
+            return response()->json([
+                'message' => 'Tagihan belum diterbitkan.',
+            ], 422);
+        }
+
         $sisaTagihan = $this->hitungSisaTagihan($tagihan);
 
         if ($sisaTagihan <= 0) {
@@ -393,6 +399,12 @@ class TagihanSayaController extends Controller
             'layananInternet.pelanggan',
             'alokasiPembayaran.pembayaran',
         ]);
+
+        if ($tagihan->status_pembayaran === StatusPembayaranEnum::BELUM_DITERBITKAN) {
+            return response()->json([
+                'message' => 'Tagihan belum diterbitkan.',
+            ], 422);
+        }
 
         $sisaTagihan = $this->hitungSisaTagihan($tagihan);
 
