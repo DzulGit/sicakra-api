@@ -392,13 +392,12 @@ class TagihanController extends Controller
     }
 
     /**
-     * Bayar tunai di kantor (TAHAP 2). Tanpa Xendit: tagihan langsung LUNAS,
-     * admin penerima dicatat, dan masa aktif layanan ditambah sesuai bulan.
-     * `jumlah_bulan` boleh dikirim untuk sekaligus bayar beberapa bulan.
+     * Bayar tunai di kantor (tanpa Xendit). Nominal diinput manual dan hanya
+     * dialokasikan ke tagihan yang sedang dibuka; kelebihan masuk saldo kredit.
      */
     public function bayarTunai(Request $request, Tagihan $tagihan)
     {
-        $this->authorize('regenerate', $tagihan);
+        $this->authorize('view', $tagihan);
 
         $tagihan->loadMissing('layananInternet.pelanggan');
 
@@ -412,7 +411,10 @@ class TagihanController extends Controller
 
         $sisaTagihan = $this->hitungSisaTagihan($tagihan);
 
-        if ($sisaTagihan <= 0) {
+        if (
+            $tagihan->status_pembayaran === StatusPembayaranEnum::SUDAH_BAYAR
+            || $sisaTagihan <= 0
+        ) {
             return response()->json([
                 'message' => 'Tagihan sudah lunas.',
             ], 422);
@@ -420,37 +422,13 @@ class TagihanController extends Controller
 
         $validated = $request->validate([
             'jumlah_dibayar' => [
-                'nullable',
+                'required',
                 'numeric',
                 'gt:0',
-                'required_without:jumlah_bulan',
-            ],
-            'jumlah_bulan' => [
-                'nullable',
-                'integer',
-                'min:1',
-                'max:12',
-                'required_without:jumlah_dibayar',
             ],
         ]);
 
-        if (isset($validated['jumlah_bulan'])) {
-            $jumlahDibayar = round(
-                (float) $tagihan->harga_snapshot * (int) $validated['jumlah_bulan'],
-                2
-            );
-        } else {
-            $jumlahDibayar = round(
-                (float) $validated['jumlah_dibayar'],
-                2
-            );
-        }
-
-        if ($jumlahDibayar <= 0) {
-            return response()->json([
-                'message' => 'Jumlah pembayaran harus lebih besar dari 0.',
-            ], 422);
-        }
+        $jumlahDibayar = round((float) $validated['jumlah_dibayar'], 2);
 
         $admin = $request->user();
 

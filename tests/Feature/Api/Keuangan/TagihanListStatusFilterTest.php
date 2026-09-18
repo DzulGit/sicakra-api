@@ -120,6 +120,74 @@ class TagihanListStatusFilterTest extends TestCase
         $this->assertSame($cicil->id, $json->json('data.data.0.id'));
     }
 
+    public function test_filter_semua_menampilkan_seluruh_scope_tanpa_status(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        $this->buatTagihan(250000);
+        $this->buatTagihan(300000);
+        $this->buatTagihan(350000);
+
+        $this->getJson('/api/admin/keuangan/tagihan')
+            ->assertOk()
+            ->assertJsonCount(3, 'data.data');
+    }
+
+    public function test_filter_lunas_memasukkan_kelebihan_pembayaran(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        // Bayar 300.000 di tagihan 250.000: 250.000 dialokasikan, kelebihan jadi kredit.
+        [$pelanggan, $lunas] = $this->buatTagihan(250000);
+        $this->service->buatPembayaranTunai($pelanggan, 300000, ['dibayar_oleh' => 'Admin']);
+
+        $json = $this->getJson('/api/admin/keuangan/tagihan?status=lunas')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+
+        $this->assertSame($lunas->id, $json->json('data.data.0.id'));
+        $this->assertSame(0, (int) $json->json('data.data.0.sisa'));
+    }
+
+    public function test_filter_lunas_tidak_memuat_tagihan_cicilan(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        [$pelanggan, $lunas] = $this->buatTagihan(250000);
+        $this->service->buatPembayaranTunai($pelanggan, 250000, ['dibayar_oleh' => 'Admin']);
+
+        [$pelangganCicil, $cicil] = $this->buatTagihan(250000);
+        $this->service->buatPembayaranTunai($pelangganCicil, 100000, ['dibayar_oleh' => 'Admin']);
+
+        $json = $this->getJson('/api/admin/keuangan/tagihan?status=lunas')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+
+        $this->assertSame($lunas->id, $json->json('data.data.0.id'));
+        $this->assertNotSame($cicil->id, $json->json('data.data.0.id'));
+    }
+
+    public function test_param_lama_sudah_bayar_diabaikan_bukan_filter_lunas(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        $this->buatTagihan(250000);
+        $this->buatTagihan(250000);
+
+        // status lama (sudah_bayar / status_pembayaran) tidak menjadi filter — semua tetap tampil.
+        $this->getJson('/api/admin/keuangan/tagihan?status=sudah_bayar')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.data');
+
+        $this->getJson('/api/admin/keuangan/tagihan?status_pembayaran=sudah_bayar')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.data');
+    }
+
     public function test_param_lama_status_pembayaran_diabaikan(): void
     {
         $admin = Admin::factory()->keuangan()->create();

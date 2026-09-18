@@ -717,6 +717,14 @@ class PembayaranAllocationService
                 'waktu' => $waktu,
                 'urutan' => $pembayaran->id,
                 'jumlah' => round((float) $alokasi->jumlah_dialokasikan, 2),
+                'jumlah_dibayar' => round((float) $pembayaran->jumlah_dibayar, 2),
+                'jumlah_kredit' => round(
+                    MutasiSaldoKredit::query()
+                        ->where('pembayaran_id', $pembayaran->id)
+                        ->where('jenis', 'kredit')
+                        ->sum('jumlah'),
+                    2
+                ),
                 'nomor_pembayaran' => $this->nomorPembayaran($pembayaran),
                 'pembayaran_id' => $pembayaran->id,
                 'metode_pembayaran' => $pembayaran->metode_pembayaran,
