@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Publik;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,9 +20,15 @@ class FotoKtpController extends Controller
             abort(404);
         }
 
-        $isi = Crypt::decryptString(
-            Storage::disk('public')->get($path)
-        );
+        $sisip = Storage::disk('public')->get($path);
+
+        // File lama (sebelum fitur enkripsi) adalah plaintext; file baru
+        // tersimpan ter-enkripsi. Dukung keduanya.
+        try {
+            $isi = Crypt::decryptString($sisip);
+        } catch (DecryptException) {
+            $isi = $sisip;
+        }
 
         $mime = match (strtolower(pathinfo($nama, PATHINFO_EXTENSION))) {
             'webp' => 'image/webp',

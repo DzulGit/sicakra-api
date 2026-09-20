@@ -45,7 +45,7 @@ Route::get('paket-internet', [PublikPaketInternetController::class, 'index']);
 // Foto KTP disimpan ter-enkripsi di disk; ditampilkan lewat URL bertanda
 // tangan (signed) yang singkat — `<img>` tak bisa membawa header Bearer.
 Route::get('foto-ktp/{file}', [FotoKtpController::class, 'tampilkan'])
-    ->middleware('signed')
+    ->middleware('signed:relative')
     ->name('foto.ktp');
 
 // ===== ADMIN =====

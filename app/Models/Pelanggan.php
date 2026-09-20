@@ -94,10 +94,13 @@ class Pelanggan extends Authenticatable
             return null;
         }
 
+        // Relatif: backend di balik ngrok mengutak-atik scheme/host,
+        // jadi validasi absolut akan selalu gagal.
         return URL::temporarySignedRoute(
             'foto.ktp',
             now()->addMinutes(30),
             ['file' => basename($this->foto_ktp)],
+            false,
         );
     }
 
