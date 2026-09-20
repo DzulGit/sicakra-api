@@ -24,7 +24,7 @@ return new class extends Migration
             }
 
             DB::table('pelanggan')
-                ->whereKey($row->id)
+                ->where('id', $row->id)
                 ->update([
                     'nik' => Crypt::encryptString($row->nik),
                     'nik_hash' => hash('sha256', $row->nik),
@@ -52,7 +52,7 @@ return new class extends Migration
             }
 
             DB::table('pelanggan')
-                ->whereKey($row->id)
+                ->where('id', $row->id)
                 ->update(['nik' => Crypt::decryptString($row->nik)]);
         });
 
