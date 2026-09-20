@@ -58,6 +58,6 @@ class PendaftaranService
 
     private function simpanFoto(UploadedFile $file, string $folder): string
     {
-        return KompresiGambar::simpanKeWebp($file, $folder);
+        return KompresiGambar::simpanKeWebp($file, $folder, enkripsi: true);
     }
 }

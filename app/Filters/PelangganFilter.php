@@ -10,9 +10,9 @@ class PelangganFilter extends QueryFilter
     {
         $builder->where(function (Builder $q) use ($nilai) {
             $q->where('nama_lengkap', 'like', "%{$nilai}%")
-              ->orWhere('nomor_pelanggan', 'like', "%{$nilai}%")
-              ->orWhere('nik', 'like', "%{$nilai}%")
-              ->orWhere('nomor_hp', 'like', "%{$nilai}%");
+                ->orWhere('nomor_pelanggan', 'like', "%{$nilai}%")
+                ->orWhere('nik_hash', hash('sha256', $nilai))
+                ->orWhere('nomor_hp', 'like', "%{$nilai}%");
         });
     }
 

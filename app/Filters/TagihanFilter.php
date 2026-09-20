@@ -21,7 +21,7 @@ class TagihanFilter extends QueryFilter
         $tahun = now('Asia/Jakarta')->year;
         $bulan = now('Asia/Jakarta')->month;
         $periodeLampau = "(tagihan.periode_tahun < {$tahun} OR (tagihan.periode_tahun = {$tahun} AND tagihan.periode_bulan < {$bulan}))";
-        $layananAktif = "EXISTS (SELECT 1 FROM layanan_internet li WHERE li.id = tagihan.layanan_internet_id AND li.status = '" . StatusLayananEnum::AKTIF->value . "')";
+        $layananAktif = "EXISTS (SELECT 1 FROM layanan_internet li WHERE li.id = tagihan.layanan_internet_id AND li.status = '".StatusLayananEnum::AKTIF->value."')";
 
         match ($nilai) {
             'lunas' => $builder->whereRaw("({$terbayar}) >= total_tagihan"),
@@ -47,7 +47,7 @@ class TagihanFilter extends QueryFilter
         return $builder->where(function ($q) use ($periodeLampau, $layananAktif) {
             // bukan tertunggak = periode bukan lampau ATAU layanan tidak aktif
             $q->whereRaw("NOT ({$periodeLampau})")
-              ->orWhereRaw("NOT ({$layananAktif})");
+                ->orWhereRaw("NOT ({$layananAktif})");
         });
     }
 
@@ -71,7 +71,7 @@ class TagihanFilter extends QueryFilter
         $builder->whereHas('layananInternet.pelanggan', function ($q) use ($nilai) {
             $q->where(function ($sq) use ($nilai) {
                 $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$nilai}%"])
-                    ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$nilai}%"])
+                    ->orWhere('nik_hash', hash('sha256', $nilai))
                     ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$nilai}%"]);
             });
         });

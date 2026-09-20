@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Pelanggan\PermohonanSayaController;
 use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
+use App\Http\Controllers\Api\Publik\FotoKtpController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPendapatanController;
 use App\Http\Controllers\Api\Reseller\ResellerPembayaranController;
@@ -41,6 +42,11 @@ use Illuminate\Support\Facades\Route;
 Route::post('pendaftaran', [PendaftaranController::class, 'store'])
     ->middleware('throttle:pendaftaran');
 Route::get('paket-internet', [PublikPaketInternetController::class, 'index']);
+// Foto KTP disimpan ter-enkripsi di disk; ditampilkan lewat URL bertanda
+// tangan (signed) yang singkat — `<img>` tak bisa membawa header Bearer.
+Route::get('foto-ktp/{file}', [FotoKtpController::class, 'tampilkan'])
+    ->middleware('signed')
+    ->name('foto.ktp');
 
 // ===== ADMIN =====
 Route::prefix('admin')->group(function () {

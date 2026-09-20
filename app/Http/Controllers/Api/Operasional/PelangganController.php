@@ -54,7 +54,7 @@ class PelangganController extends Controller
 
         $permohonan = DB::transaction(function () use ($data, $request, $aktor, $adalahReseller) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? KompresiGambar::simpanKeWebp($request->file('foto_ktp'), 'ktp')
+                ? KompresiGambar::simpanKeWebp($request->file('foto_ktp'), 'ktp', enkripsi: true)
                 : null;
 
             $pelanggan = Pelanggan::create([

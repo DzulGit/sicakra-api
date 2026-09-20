@@ -4,6 +4,7 @@ namespace App\Support;
 
 use GdImage;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -22,13 +23,22 @@ class KompresiGambar
 {
     /**
      * @param  int  $kualitas  0-100, 80 = kompromi ringan tapi tetap tajam.
+     * @param  bool  $enkripsi  true = simpan isi file ter-enkripsi AES di disk;
+     *                          dipakai untuk dokumen sensitif (foto KTP). Konten
+     *                          dikembalikan mentah lewat endpoint khusus.
      */
-    public static function simpanKeWebp(UploadedFile $file, string $folder, int $kualitas = 80): string
+    public static function simpanKeWebp(UploadedFile $file, string $folder, int $kualitas = 80, bool $enkripsi = false): string
     {
         $gambar = self::decodifikasi($file);
 
         if ($gambar === null) {
-            return Storage::disk('public')->putFile($folder, $file);
+            $path = Storage::disk('public')->putFile($folder, $file);
+
+            if ($enkripsi) {
+                Storage::disk('public')->put($path, Crypt::encryptString(Storage::disk('public')->get($path)));
+            }
+
+            return $path;
         }
 
         $gambar = self::terapkanOrientasiExif($gambar, $file);
@@ -46,7 +56,7 @@ class KompresiGambar
 
         $nama = $folder.'/'.now()->format('YmdHis').'_'.bin2hex(random_bytes(4)).'.webp';
 
-        Storage::disk('public')->put($nama, $isi);
+        Storage::disk('public')->put($nama, $enkripsi ? Crypt::encryptString($isi) : $isi);
 
         return $nama;
     }

@@ -37,7 +37,7 @@ class PendaftaranTest extends TestCase
 
         $response->assertCreated();
 
-        $this->assertDatabaseHas('pelanggan', ['nik' => '1234567890123456']);
+        $this->assertDatabaseHas('pelanggan', ['nik_hash' => hash('sha256', '1234567890123456')]);
         $this->assertDatabaseHas('permohonan_layanan', ['status' => 'MENUNGGU_VERIFIKASI']);
     }
 
@@ -118,7 +118,7 @@ class PendaftaranTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('pelanggan', ['nik' => '1111222233334444']);
+        $this->assertDatabaseHas('pelanggan', ['nik_hash' => hash('sha256', '1111222233334444')]);
     }
 
     public function test_pendaftaran_gagal_tanpa_foto_ktp(): void

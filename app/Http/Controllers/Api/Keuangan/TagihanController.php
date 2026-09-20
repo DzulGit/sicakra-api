@@ -565,7 +565,7 @@ class TagihanController extends Controller
             $query->whereHas('layananInternet.pelanggan', function ($pq) use ($search) {
                 $pq->where(function ($sq) use ($search) {
                     $sq->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$search}%"])
-                        ->orWhereRaw('LOWER(nik) LIKE ?', ["%{$search}%"])
+                        ->orWhere('nik_hash', hash('sha256', $search))
                         ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$search}%"]);
                 });
             });

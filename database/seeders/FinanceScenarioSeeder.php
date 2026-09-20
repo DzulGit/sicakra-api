@@ -62,14 +62,13 @@ class FinanceScenarioSeeder extends Seeder
         $this->keuangan = Admin::where('email', 'keuangan@sicakra.com')->firstOrFail();
 
         // Lanjut dari data yang sudah ada agar re-run (jalankan ulang seeder)
-        // tidak bentrok pada nomor HP / NIK.
+        // tidak bentrok pada nomor HP / NIK. NIK kini ter-enkripsi di DB,
+        // sehingga agregat SQL tak bisa dipakai — hitung lewat model.
         $this->nomorHp = (int) (Pelanggan::query()
             ->selectRaw("MAX(CAST(SUBSTRING(nomor_hp FROM 5) AS BIGINT)) AS mx")
             ->where('nomor_hp', 'LIKE', '0812%')
             ->value('mx')) ?: 10000000;
-        $this->nik = (int) (Pelanggan::query()
-            ->selectRaw('MAX(CAST(nik AS BIGINT)) AS mx')
-            ->value('mx')) ?: 3600000000000000;
+        $this->nik = (int) (Pelanggan::all()->map(fn ($p) => (int) $p->nik)->max() ?: 3600000000000000);
 
         $bronze = $this->paket('Paket Bronze');
         $silver = $this->paket('Paket Silver');

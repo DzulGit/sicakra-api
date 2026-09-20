@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Reseller;
 
+use App\Rules\NikUnik;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +21,7 @@ class DaftarkanPelangganRequest extends FormRequest
             'nama_lengkap' => ['required', 'string', 'max:255'],
             'nik' => [
                 'required', 'string', 'size:16',
-                Rule::unique('pelanggan', 'nik')->where('reseller_id', $resellerId),
+                new NikUnik($resellerId),
             ],
             'nomor_hp' => [
                 'required', 'string', 'max:20',

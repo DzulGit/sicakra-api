@@ -191,7 +191,8 @@ class ResellerPortalController extends Controller
             $pathKtp = $request->hasFile('foto_ktp')
                 ? KompresiGambar::simpanKeWebp(
                     $request->file('foto_ktp'),
-                    'ktp'
+                    'ktp',
+                    enkripsi: true,
                 )
                 : null;
 

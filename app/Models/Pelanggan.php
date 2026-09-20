@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Laravel\Sanctum\HasApiTokens;
 
 class Pelanggan extends Authenticatable
@@ -34,11 +35,28 @@ class Pelanggan extends Authenticatable
         'password_sudah_dibuat' => 'boolean',
         'tanggal_tagihan' => 'integer',
         'password' => 'hashed',
+        'nik' => 'encrypted',
     ];
 
     protected $hidden = [
         'password',
+        'nik_hash',
     ];
+
+    protected $appends = [
+        'foto_ktp_url',
+    ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Pelanggan $pelanggan): void {
+            if ($pelanggan->isDirty('nik')) {
+                $pelanggan->nik_hash = $pelanggan->nik
+                    ? hash('sha256', $pelanggan->nik)
+                    : null;
+            }
+        });
+    }
 
     // Catatan: password default (= nomor_pelanggan) TIDAK di-set di sini,
     // karena saat Pelanggan::create() dipanggil dari PendaftaranService,
@@ -72,7 +90,15 @@ class Pelanggan extends Authenticatable
 
     public function getFotoKtpUrlAttribute(): ?string
     {
-        return $this->foto_ktp ? Storage::url($this->foto_ktp) : null;
+        if (! $this->foto_ktp) {
+            return null;
+        }
+
+        return URL::temporarySignedRoute(
+            'foto.ktp',
+            now()->addMinutes(30),
+            ['file' => basename($this->foto_ktp)],
+        );
     }
 
     public function getFotoProfilUrlAttribute(): ?string
