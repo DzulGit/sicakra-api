@@ -8,11 +8,15 @@ class PelangganFilter extends QueryFilter
 {
     protected function cari(Builder $builder, string $nilai): void
     {
+        // LOWER + strtolower → case-insensitive (pola yang sama dipakai TagihanFilter).
+        // `like` mentah di PostgreSQL ternyata case-sensitive.
+        $nilai = strtolower($nilai);
+
         $builder->where(function (Builder $q) use ($nilai) {
-            $q->where('nama_lengkap', 'like', "%{$nilai}%")
-                ->orWhere('nomor_pelanggan', 'like', "%{$nilai}%")
+            $q->whereRaw('LOWER(nama_lengkap) LIKE ?', ["%{$nilai}%"])
+                ->orWhereRaw('LOWER(nomor_pelanggan) LIKE ?', ["%{$nilai}%"])
                 ->orWhere('nik_hash', hash('sha256', $nilai))
-                ->orWhere('nomor_hp', 'like', "%{$nilai}%");
+                ->orWhereRaw('LOWER(nomor_hp) LIKE ?', ["%{$nilai}%"]);
         });
     }
 
