@@ -15,6 +15,7 @@ use App\Models\PaketInternet;
 use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\PembayaranTagihan;
+use App\Models\ShadowSesi;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\AdminRepositoryInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -134,8 +135,9 @@ class ResellerController extends Controller
     }
 
     /**
-     * Shadow login — buat token temporer supaya admin bisa masuk
-     * ke portal reseller tanpa mengganggu sesi aktif.
+     * Shadow login — buat kode penukaran sekali pakai untuk membuka portal
+     * reseller di tab baru. Token asli tidak pernah lewat URL/share log:
+     * admin yang menargetkan lalu POST ke /reseller/shadow/klaim.
      * Hanya boleh dipanggil oleh admin operasional/super_admin.
      */
     public function shadow(Admin $reseller)
@@ -144,17 +146,24 @@ class ResellerController extends Controller
             abort(404);
         }
 
-        // Token baru, tanpa menghapus token lama reseller (sesi reseller tetap jalan).
-        $token = $reseller->createToken('shadow-' . auth()->id())->plainTextToken;
+        $kode = bin2hex(random_bytes(32));
+
+        $sesi = \App\Models\ShadowSesi::create([
+            'admin_id' => auth()->id(),
+            'reseller_id' => $reseller->id,
+            'kode_hash' => hash('sha256', $kode),
+            'kode_kedaluwarsa_pada' => now()->addMinutes((int) env('SHADOW_KODE_EXPIRATION_MINUTES', 3)),
+        ]);
 
         Log::info('Shadow login initiated', [
             'admin_id' => auth()->id(),
             'reseller_id' => $reseller->id,
+            'shadow_sesi_id' => $sesi->id,
         ]);
 
         return response()->json([
             'data' => [
-                'token' => $token,
+                'kode' => $kode,
                 'reseller' => [
                     'id' => $reseller->id,
                     'nama_lengkap' => $reseller->nama_lengkap,
@@ -162,6 +171,39 @@ class ResellerController extends Controller
                     'foto_profil' => $reseller->foto_profil,
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Batalkan semua shadow aktif admin ke reseller ini.
+     */
+    public function batalkanShadow(Admin $reseller)
+    {
+        if ($reseller->peran !== PeranAdminEnum::RESELLER) {
+            abort(404);
+        }
+
+        $sesi = ShadowSesi::query()
+            ->where('admin_id', auth()->id())
+            ->where('reseller_id', $reseller->id)
+            ->whereNull('diakhiri_pada')
+            ->whereNotNull('token_id')
+            ->get();
+
+        foreach ($sesi as $s) {
+            if ($s->token_id) {
+                $s->reseller->tokens()->where('id', $s->token_id)->delete();
+            }
+            $s->update([
+                'diakhiri_pada' => now(),
+                'diakhiri_oleh' => auth()->id(),
+            ]);
+        }
+
+        return response()->json([
+            'message' => $sesi->count() > 0
+                ? 'Shadow dibatalkan.'
+                : 'Tidak ada shadow aktif.',
         ]);
     }
 

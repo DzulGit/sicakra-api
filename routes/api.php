@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\Publik\FotoKtpController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPendapatanController;
 use App\Http\Controllers\Api\Reseller\ResellerPembayaranController;
+use App\Http\Controllers\Api\Reseller\ShadowSesiController;
 use App\Http\Controllers\Api\Reseller\TagihanController as ResellerTagihanController;
 use App\Http\Controllers\Api\Reseller\PaketInternetController as ResellerPaketInternetController;
 use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
@@ -102,6 +103,7 @@ Route::prefix('admin')->group(function () {
             Route::get('reseller/{reseller}/paket', [ResellerController::class, 'paket']);
             Route::get('reseller/{reseller}/tagihan', [ResellerController::class, 'tagihan']);
             Route::post('reseller/{reseller}/shadow', [ResellerController::class, 'shadow']);
+            Route::delete('reseller/{reseller}/shadow', [ResellerController::class, 'batalkanShadow']);
 
             Route::patch('/laporan-kendala/{laporanKendala}/tindak-lanjut', [LaporanKendalaController::class, 'tindakLanjut']);
         });
@@ -173,11 +175,15 @@ Route::prefix('admin')->group(function () {
 });
 
 Route::prefix('reseller')->group(function () {
+    Route::post('shadow/klaim', [ShadowSesiController::class, 'klaim'])
+        ->middleware('throttle:shadow-klaim');
+
     Route::post('login', [AuthAdminController::class, 'loginReseller'])
         ->middleware('throttle:login');
 
-    Route::middleware(['auth:sanctum', 'tipe-pengguna:admin', 'peran:reseller'])->group(function () {
+    Route::middleware(['auth:sanctum', 'tipe-pengguna:admin', 'peran:reseller', 'shadow-trace'])->group(function () {
         Route::post('logout', [AuthAdminController::class, 'logout']);
+        Route::post('shadow/selesai', [ShadowSesiController::class, 'selesai']);
 
         Route::get('dashboard', [ResellerPortalController::class, 'dashboard']);
         Route::get('pendapatan', [ResellerPendapatanController::class, 'index']);

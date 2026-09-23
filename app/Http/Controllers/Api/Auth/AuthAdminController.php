@@ -6,6 +6,7 @@ use App\Enums\PeranAdminEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginAdminRequest;
 use App\Models\Admin;
+use App\Models\ShadowSesi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -73,7 +74,39 @@ class AuthAdminController extends Controller
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+        $token = $user->currentAccessToken();
+
+        if (str_starts_with($token->name, 'shadow-')) {
+            // Reseller keluar dari portal padahal dibuka via shadow.
+            $sesi = ShadowSesi::query()
+                ->where('token_id', $token->id)
+                ->whereNull('diakhiri_pada')
+                ->first();
+            if ($sesi) {
+                $sesi->update([
+                    'diakhiri_pada' => now(),
+                    'diakhiri_oleh' => $sesi->admin_id,
+                ]);
+            }
+        } else {
+            // Admin (logout pribadi) → matikan semua shadow yang dia buat.
+            ShadowSesi::query()
+                ->where('admin_id', $user->id)
+                ->whereNull('diakhiri_pada')
+                ->get()
+                ->each(function (ShadowSesi $sesi) use ($user) {
+                    if ($sesi->token_id) {
+                        Admin::find($sesi->reseller_id)?->tokens()->where('id', $sesi->token_id)->delete();
+                    }
+                    $sesi->update([
+                        'diakhiri_pada' => now(),
+                        'diakhiri_oleh' => $user->id,
+                    ]);
+                });
+        }
+
+        $token->delete();
 
         return response()->json([
             'message' => 'Berhasil logout.',

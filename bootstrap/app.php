@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tipe-pengguna' => \App\Http\Middleware\PastikanTipePengguna::class,
             'pastikan.password' => \App\Http\Middleware\PastikanPasswordSudahDibuat::class,
             'peran' => \App\Http\Middleware\PastikanPeranAdmin::class,
+            'shadow-trace' => \App\Http\Middleware\ShadowAktivitasTracer::class,
         ]);
 
         $middleware->api(append: [
