@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Laravel\Sanctum\HasApiTokens;
 
 class Pelanggan extends Authenticatable
@@ -44,7 +43,9 @@ class Pelanggan extends Authenticatable
     ];
 
     protected $appends = [
-        'foto_ktp_url',
+        // Catatan: `foto_ktp_url` DIHAPUS. Foto KTP tidak lagi punya URL public;
+        // preview hanya lewat endpoint ber-authorize (Operasional/Reseller) yang
+        // membaca path dari record pelanggan ini.
     ];
 
     protected static function booted(): void
@@ -86,22 +87,6 @@ class Pelanggan extends Authenticatable
     public function reseller()
     {
         return $this->belongsTo(Admin::class, 'reseller_id');
-    }
-
-    public function getFotoKtpUrlAttribute(): ?string
-    {
-        if (! $this->foto_ktp) {
-            return null;
-        }
-
-        // Relatif: backend di balik ngrok mengutak-atik scheme/host,
-        // jadi validasi absolut akan selalu gagal.
-        return URL::temporarySignedRoute(
-            'foto.ktp',
-            now()->addMinutes(30),
-            ['file' => basename($this->foto_ktp)],
-            false,
-        );
     }
 
     public function getFotoProfilUrlAttribute(): ?string

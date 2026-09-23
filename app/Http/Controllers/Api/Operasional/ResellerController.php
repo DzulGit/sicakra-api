@@ -18,6 +18,7 @@ use App\Models\PembayaranTagihan;
 use App\Models\ShadowSesi;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\AdminRepositoryInterface;
+use App\Services\KtpStorageService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -100,6 +101,22 @@ class ResellerController extends Controller
         return response()->json([
             'data' => $pelanggan,
         ]);
+    }
+
+    /**
+     * Preview foto KTP pelanggan milik reseller (admin internal) — otorisasi
+     * sama persis seperti pelangganDetail (ResellerPolicy::lihatPelanggan),
+     * path berasal dari record pelanggan yang sudah diverifikasi scope-nya.
+     */
+    public function fotoKtpPelanggan(Admin $reseller, Pelanggan $pelanggan): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->authorize('lihatPelanggan', $reseller);
+
+        if ($pelanggan->reseller_id !== $reseller->id) {
+            abort(404);
+        }
+
+        return KtpStorageService::responGambar($pelanggan);
     }
 
     /** Pantau paket internet yang dibuat reseller — read-only. */

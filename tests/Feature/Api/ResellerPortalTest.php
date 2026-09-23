@@ -21,6 +21,7 @@ class ResellerPortalTest extends TestCase
     {
         parent::setUp();
         Storage::fake('public');
+        Storage::fake('private');
     }
 
     public function test_login_portal_hanya_untuk_reseller_dan_login_admin_menolak_reseller(): void
@@ -146,6 +147,7 @@ class ResellerPortalTest extends TestCase
         // Foto yang diunggah harus otomatis terkompresi jadi WebP.
         $this->assertNotNull($pelanggan->foto_ktp);
         $this->assertTrue(str_ends_with($pelanggan->foto_ktp, '.webp'));
+        $this->assertTrue(Storage::disk('private')->exists($pelanggan->foto_ktp));
 
         $layanan = $pelanggan->layananInternet->first();
         $this->assertNotNull($layanan);

@@ -17,9 +17,9 @@ use App\Models\Pelanggan;
 use App\Models\Pembayaran;
 use App\Models\Tagihan;
 use App\Services\GeneratorNomorService;
+use App\Services\KtpStorageService;
 use App\Services\PembayaranAllocationService;
 use App\Services\SiklusPenagihanService;
-use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -189,11 +189,7 @@ class ResellerPortalController extends Controller
             $paket
         ) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? KompresiGambar::simpanKeWebp(
-                    $request->file('foto_ktp'),
-                    'ktp',
-                    enkripsi: true,
-                )
+                ? KtpStorageService::simpan($request->file('foto_ktp'))
                 : null;
 
             /*

@@ -2,9 +2,10 @@
 
 namespace Tests\Feature\Pendaftaran;
 
+use App\Models\Admin;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
-use App\Support\KompresiGambar;
+use App\Services\KtpStorageService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
@@ -15,6 +16,13 @@ use Tests\TestCase;
 class EnkripsiDataSensitifTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Storage::fake('public');
+        Storage::fake('private');
+    }
 
     public function test_nik_tersimpan_terenkripsi_di_database(): void
     {
@@ -50,22 +58,29 @@ class EnkripsiDataSensitifTest extends TestCase
         $response->assertStatus(422)->assertJsonValidationErrors('nik');
     }
 
-    public function test_foto_ktp_tersimpan_terenkripsi_dan_bisa_dimuat_lewat_url_bertanda_tangan(): void
+    public function test_foto_ktp_tersimpan_terenkripsi_di_private_disk_dan_bisa_dipreview_admin(): void
     {
-        Storage::fake('public');
+        $admin = Admin::factory()->operasional()->create();
+        $token = $admin->createToken('test')->plainTextToken;
 
         $pelanggan = Pelanggan::factory()->create([
-            'foto_ktp' => KompresiGambar::simpanKeWebp(
-                UploadedFile::fake()->image('ktp.jpg'),
-                'ktp',
-                enkripsi: true,
-            ),
+            'foto_ktp' => KtpStorageService::simpan(UploadedFile::fake()->image('ktp.jpg')),
         ]);
 
-        $isiDisk = Storage::disk('public')->get($pelanggan->foto_ktp);
+        // Tersimpan di PRIVATE disk, bukan public.
+        $this->assertNotNull($pelanggan->foto_ktp);
+        $this->assertTrue(str_ends_with($pelanggan->foto_ktp, '.webp'));
+        $this->assertTrue(Storage::disk('private')->exists($pelanggan->foto_ktp));
+        $this->assertFalse(Storage::disk('public')->exists($pelanggan->foto_ktp));
+
+        // Konten di disk ter-enkripsi, dan bisa didecrypt kembali ke WebP asli.
+        $isiDisk = Storage::disk('private')->get($pelanggan->foto_ktp);
         $this->assertStringStartsWith("\x52\x49\x46\x46", Crypt::decryptString($isiDisk));
 
-        $response = $this->get($pelanggan->foto_ktp_url);
+        // Admin yang berwenang bisa preview lewat endpoint ber-auth.
+        $response = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson("/api/admin/operasional/pelanggan/{$pelanggan->id}/foto-ktp");
+
         $response->assertOk()->assertHeader('Content-Type', 'image/webp');
         $this->assertStringStartsWith("\x52\x49\x46\x46", $response->getContent());
     }

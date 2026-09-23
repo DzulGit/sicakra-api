@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Keuangan\PembayaranController;
 use App\Http\Controllers\Api\Keuangan\TagihanController as KeuanganTagihanController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Operasional\DashboardController;
+use App\Http\Controllers\Api\Operasional\FotoKtpController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\LaporanKendalaController as OperasionalLaporanKendalaController;
 use App\Http\Controllers\Api\Operasional\PaketInternetController as OperasionalPaketInternetController;
@@ -22,8 +23,8 @@ use App\Http\Controllers\Api\Pelanggan\PermohonanSayaController;
 use App\Http\Controllers\Api\Pelanggan\ProfilController;
 use App\Http\Controllers\Api\Pelanggan\TagihanSayaController;
 use App\Http\Controllers\Api\Pendaftaran\PendaftaranController;
-use App\Http\Controllers\Api\Publik\FotoKtpController;
 use App\Http\Controllers\Api\Publik\PaketInternetController as PublikPaketInternetController;
+use App\Http\Controllers\Api\Reseller\FotoKtpController as ResellerFotoKtpController;
 use App\Http\Controllers\Api\Reseller\ResellerPendapatanController;
 use App\Http\Controllers\Api\Reseller\ResellerPembayaranController;
 use App\Http\Controllers\Api\Reseller\ShadowSesiController;
@@ -43,11 +44,6 @@ use Illuminate\Support\Facades\Route;
 Route::post('pendaftaran', [PendaftaranController::class, 'store'])
     ->middleware('throttle:pendaftaran');
 Route::get('paket-internet', [PublikPaketInternetController::class, 'index']);
-// Foto KTP disimpan ter-enkripsi di disk; ditampilkan lewat URL bertanda
-// tangan (signed) yang singkat — `<img>` tak bisa membawa header Bearer.
-Route::get('foto-ktp/{file}', [FotoKtpController::class, 'tampilkan'])
-    ->middleware('signed:relative')
-    ->name('foto.ktp');
 
 // ===== ADMIN =====
 Route::prefix('admin')->group(function () {
@@ -100,6 +96,7 @@ Route::prefix('admin')->group(function () {
             Route::post('reseller', [ResellerController::class, 'store']);
             Route::get('reseller/{reseller}/pelanggan', [ResellerController::class, 'pelanggan']);
             Route::get('reseller/{reseller}/pelanggan/{pelanggan}', [ResellerController::class, 'pelangganDetail']);
+            Route::get('reseller/{reseller}/pelanggan/{pelanggan}/foto-ktp', [ResellerController::class, 'fotoKtpPelanggan']);
             Route::get('reseller/{reseller}/paket', [ResellerController::class, 'paket']);
             Route::get('reseller/{reseller}/tagihan', [ResellerController::class, 'tagihan']);
             Route::post('reseller/{reseller}/shadow', [ResellerController::class, 'shadow']);
@@ -114,6 +111,9 @@ Route::prefix('admin')->group(function () {
             Route::post('pelanggan/buat-baru', [PelangganController::class, 'buatBaru']);
             Route::get('pelanggan', [PelangganController::class, 'index']);
             Route::get('pelanggan/{pelanggan}', [PelangganController::class, 'show']);
+            // Preview foto KTP — hak akses sama dengan detail pelanggan (path
+            // berasal dari record pelanggan, bukan dari input request).
+            Route::get('pelanggan/{pelanggan}/foto-ktp', [FotoKtpController::class, 'tampilkan']);
             Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
             Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
@@ -194,6 +194,9 @@ Route::prefix('reseller')->group(function () {
         Route::get('pelanggan', [ResellerPortalController::class, 'pelangganIndex']);
         Route::get('pelanggan/{pelanggan}', [ResellerPortalController::class, 'pelangganShow']);
         Route::post('pelanggan', [ResellerPortalController::class, 'daftarkanPelanggan']);
+        // Preview foto KTP pelanggan — hanya milik reseller yang login (scope sama
+        // dengan pelangganShow; path dari record pelanggan, bukan input request).
+        Route::get('pelanggan/{pelanggan}/foto-ktp', [ResellerFotoKtpController::class, 'tampilkan']);
 
         Route::get('profil', [ResellerProfilController::class, 'show']);
         Route::patch('profil', [ResellerProfilController::class, 'update']);
