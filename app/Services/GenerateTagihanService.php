@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
 use App\Enums\TipePaketEnum;
+use App\Events\TagihanDibuat;
 use App\Models\LayananInternet;
 use App\Models\Tagihan;
 use App\Repositories\Contracts\TagihanRepositoryInterface;
@@ -149,6 +150,14 @@ class GenerateTagihanService
         ];
     }
 
+    /**
+     * Buat tagihan PERTAMA untuk layanan aktif dan langsung TERBITKAN.
+     *
+     * Berbeda dari tagihan rutin (generateDraftUntukLayanan) yang berstatus
+     * belum_diterbitkan dan menunggu langkah terbitkan terpisah — tagihan
+     * pertama langsung berstatus belum_bayar + diterbitkan_pada + dispatch
+     * event TagihanDibuat (notifikasi + siap dibayar).
+     */
     public function generateTagihanPertama(
         LayananInternet $layanan,
         string $mode,
@@ -212,8 +221,13 @@ class GenerateTagihanService
                 'harga_snapshot' => $hargaBulanan,
                 'total_tagihan' => $totalTagihan,
                 'jumlah_bulan' => 1,
-                'status_pembayaran' => StatusPembayaranEnum::BELUM_DITERBITKAN,
+                'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+                'diterbitkan_pada' => now(),
             ]);
+
+            // Tagihan pertama langsung aktif: event ini memicu notifikasi
+            // ke pelanggan (alur yang sama ketika terbitkan lewat /terbitkan).
+            TagihanDibuat::dispatch($tagihan);
 
             return $tagihan;
         });

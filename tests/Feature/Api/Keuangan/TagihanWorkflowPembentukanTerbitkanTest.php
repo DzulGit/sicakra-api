@@ -52,7 +52,7 @@ class TagihanWorkflowPembentukanTerbitkanTest extends TestCase
         Event::assertNotDispatched(TagihanDibuat::class);
     }
 
-    public function test_generate_tagihan_pertama_membentuk_draft_belum_diterbitkan(): void
+    public function test_generate_tagihan_pertama_langsung_terbit_belum_bayar(): void
     {
         $admin = Admin::factory()->keuangan()->create();
         $pelanggan = Pelanggan::factory()->create();
@@ -67,8 +67,11 @@ class TagihanWorkflowPembentukanTerbitkanTest extends TestCase
 
         $tagihan = Tagihan::where('layanan_internet_id', $layanan->id)->firstOrFail();
 
-        $this->assertSame(StatusPembayaranEnum::BELUM_DITERBITKAN, $tagihan->status_pembayaran);
-        Event::assertNotDispatched(TagihanDibuat::class);
+        // Tagihan pertama LANGSUNG terbit (tanpa langkah terbitkan terpisah):
+        // status belum_bayar, tercatat waktu diterbitkan, dan event TagihanDibuat di-dispatch.
+        $this->assertSame(StatusPembayaranEnum::BELUM_BAYAR, $tagihan->status_pembayaran);
+        $this->assertNotNull($tagihan->diterbitkan_pada);
+        Event::assertDispatched(TagihanDibuat::class);
     }
 
     public function test_draft_first_timer_muncul_di_draft_index_dan_bisa_diterbitkan(): void
