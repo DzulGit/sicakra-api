@@ -29,17 +29,16 @@ class AktivasiAkunPelangganService
             true
         );
 
-        // Password & username default = nomor_pelanggan. Password di-hash
+        // Password default = nomor_pelanggan. Password di-hash
         // otomatis lewat cast 'password' => 'hashed' di model Pelanggan
         // (JANGAN Hash::make() manual di sini, nanti ke-hash dua kali dan
-        // login akan selalu gagal). Username boleh diubah sendiri nanti oleh
-        // pelanggan lewat halaman Profil; ini cuma nilai awal.
+        // login akan selalu gagal). Identitas login memakai nomor_pelanggan —
+        // tidak ada kolom username.
         //
         // tanggal_tagihan default diambil dari tanggal aktivasi (hari install),
         // jadi siklus penagihan mulai konsisten dengan tanggal aktif layanan.
         $pelanggan->update([
             'nomor_pelanggan' => $nomorPelanggan,
-            'username' => $nomorPelanggan,
             'password' => $nomorPelanggan,
             'tanggal_tagihan' => now()->day,
         ]);

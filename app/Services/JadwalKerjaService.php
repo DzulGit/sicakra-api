@@ -56,7 +56,7 @@ class JadwalKerjaService
      * - selesai -> trigger KonversiPermohonanService (sama seperti sebelumnya:
      *   bikin/update layanan_internet + generate nomor_pelanggan kalau layanan
      *   pertama), lalu kembalikan RINGKASAN AKTIVASI supaya teknisi bisa
-     *   langsung edukasi pelanggan di lokasi (username, paket, status).
+     *   langsung edukasi pelanggan di lokasi (nomor pelanggan, paket, status).
      * - kendala -> status balik ke DITUNDA, menunggu Operasional reschedule.
      *
      * @return array{jadwal: JadwalKerja, ringkasan_aktivasi: array|null}

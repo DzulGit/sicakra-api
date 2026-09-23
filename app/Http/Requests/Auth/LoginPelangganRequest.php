@@ -14,7 +14,7 @@ class LoginPelangganRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'username' => ['required', 'string'],
+            'nomor_pelanggan' => ['required', 'string'],
             'password' => ['required', 'string'],
         ];
     }

@@ -38,7 +38,7 @@ class JadwalKerjaController extends Controller
         return response()->json(['data' => $jadwal]);
     }
 
-    /** Response menyertakan `ringkasan_aktivasi` (username dkk) kalau hasil = selesai. */
+    /** Response menyertakan `ringkasan_aktivasi` (nomor pelanggan dkk) kalau hasil = selesai. */
     public function isiHasil(HasilKerjaRequest $request, JadwalKerja $jadwalKerja)
     {
         $this->authorize('isiHasil', $jadwalKerja);

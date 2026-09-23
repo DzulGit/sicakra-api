@@ -36,7 +36,6 @@ class AkunDiaktifkanNotification extends Notification implements ShouldQueue
             ->view('emails.akun-diaktifkan', [
                 'nama' => $notifiable->nama_lengkap,
                 'nomorPelanggan' => $notifiable->nomor_pelanggan,
-                'username' => $notifiable->username,
                 'passwordDefault' => $notifiable->nomor_pelanggan,
             ]);
     }

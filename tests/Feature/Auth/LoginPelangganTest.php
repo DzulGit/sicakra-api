@@ -92,7 +92,7 @@ class LoginPelangganTest extends TestCase
         ]);
 
         $response = $this->postJson('/api/pelanggan/login', [
-            'username' => $pelanggan->username,
+            'nomor_pelanggan' => $pelanggan->nomor_pelanggan,
             'password' => 'password123',
         ]);
 
