@@ -38,6 +38,20 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Disk PRIVATE untuk dokumen sensitif (foto KTP).
+         * - Root di luar public dan tanpa symlink /storage.
+         * - Tanpa `serve` / `url`: file TIDAK pernah disajikan lewat URL public
+         *   (Storage::url()/Storage::temporaryUrl() tidak digunakan untuk disk ini).
+         * - Isi file juga ter-enkripsi AES-256 (Crypt + APP_KEY) saat disimpan.
+         */
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

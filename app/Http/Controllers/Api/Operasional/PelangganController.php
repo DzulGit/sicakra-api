@@ -12,10 +12,10 @@ use App\Models\LayananInternet;
 use App\Models\Pelanggan;
 use App\Notifications\PelangganBaruDariResellerNotification;
 use App\Repositories\Contracts\PelangganRepositoryInterface;
+use App\Services\KtpStorageService;
 use App\Services\PembayaranAllocationService;
 use App\Services\PermohonanLayananService;
 use App\Services\SiklusPenagihanService;
-use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -54,7 +54,7 @@ class PelangganController extends Controller
 
         $permohonan = DB::transaction(function () use ($data, $request, $aktor, $adalahReseller) {
             $pathKtp = $request->hasFile('foto_ktp')
-                ? KompresiGambar::simpanKeWebp($request->file('foto_ktp'), 'ktp', enkripsi: true)
+                ? KtpStorageService::simpan($request->file('foto_ktp'))
                 : null;
 
             $pelanggan = Pelanggan::create([

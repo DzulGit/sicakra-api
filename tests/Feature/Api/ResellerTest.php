@@ -20,6 +20,7 @@ class ResellerTest extends TestCase
     {
         parent::setUp();
         Storage::fake('public');
+        Storage::fake('private');
     }
 
     public function test_operasional_dapat_crud_reseller_dan_keuangan_diblokir(): void
@@ -82,6 +83,7 @@ class ResellerTest extends TestCase
         $this->assertSame($reseller->id, $pelanggan->reseller_id);
         $this->assertNotNull($pelanggan->foto_ktp);
         $this->assertTrue(str_ends_with($pelanggan->foto_ktp, '.webp'));
+        $this->assertTrue(Storage::disk('private')->exists($pelanggan->foto_ktp));
 
         $layanan = $pelanggan->layananInternet->first();
         $this->assertNotNull($layanan);

@@ -23,42 +23,56 @@ class KompresiGambar
 {
     /**
      * @param  int  $kualitas  0-100, 80 = kompromi ringan tapi tetap tajam.
-     * @param  bool  $enkripsi  true = simpan isi file ter-enkripsi AES di disk;
-     *                          dipakai untuk dokumen sensitif (foto KTP). Konten
-     *                          dikembalikan mentah lewat endpoint khusus.
+     * @param  bool  $enkripsi  true = isi file langsung ditulis sebagai ciphertext
+     *                          AES-256 (Crypt + APP_KEY) — tanpa copy plaintext
+     *                          perantara di disk. Dipakai dokumen sensitif (foto KTP),
+     *                          konten dikembalikan mentah lewat endpoint ber-authorize.
+     * @param  string  $disk  disk tujuan. Harus bernilai 'private' untuk dokumen sensitif.
      */
-    public static function simpanKeWebp(UploadedFile $file, string $folder, int $kualitas = 80, bool $enkripsi = false): string
-    {
+    public static function simpanKeWebp(
+        UploadedFile $file,
+        string $folder,
+        int $kualitas = 80,
+        bool $enkripsi = false,
+        string $disk = 'public',
+    ): string {
         $gambar = self::decodifikasi($file);
 
+        $nama = $folder.'/'.now()->format('YmdHis').'_'.bin2hex(random_bytes(4));
+
         if ($gambar === null) {
-            $path = Storage::disk('public')->putFile($folder, $file);
+            // Format yang tidak dikenal GD (mis. HEIC) → simpan mentah. Ekstensi
+            // asli dipertahankan agar MIME tetap dikenali saat disajikan nanti.
+            $nama .= '.'.self::ekstensiAman($file);
+            $isi = $file->get();
+        } else {
+            $gambar = self::terapkanOrientasiExif($gambar, $file);
 
-            if ($enkripsi) {
-                Storage::disk('public')->put($path, Crypt::encryptString(Storage::disk('public')->get($path)));
-            }
+            // Pertahankan alpha PNG transparan (mis. logo/scan dgn latar transparan).
+            imagealphablending($gambar, false);
+            imagesavealpha($gambar, true);
 
-            return $path;
+            $stream = fopen('php://temp', 'r+');
+            imagewebp($gambar, $stream, $kualitas);
+            rewind($stream);
+            $isi = stream_get_contents($stream);
+            fclose($stream);
+            imagedestroy($gambar);
+
+            $nama .= '.webp';
         }
 
-        $gambar = self::terapkanOrientasiExif($gambar, $file);
-
-        // Pertahankan alpha PNG transparan (mis. logo/scan dgn latar transparan).
-        imagealphablending($gambar, false);
-        imagesavealpha($gambar, true);
-
-        $stream = fopen('php://temp', 'r+');
-        imagewebp($gambar, $stream, $kualitas);
-        rewind($stream);
-        $isi = stream_get_contents($stream);
-        fclose($stream);
-        imagedestroy($gambar);
-
-        $nama = $folder.'/'.now()->format('YmdHis').'_'.bin2hex(random_bytes(4)).'.webp';
-
-        Storage::disk('public')->put($nama, $enkripsi ? Crypt::encryptString($isi) : $isi);
+        // Dokumen sensitif langsung ditulis dalam bentuk ter-enkripsi.
+        Storage::disk($disk)->put($nama, $enkripsi ? Crypt::encryptString($isi) : $isi);
 
         return $nama;
+    }
+
+    private static function ekstensiAman(UploadedFile $file): string
+    {
+        $ekstensi = strtolower((string) $file->getClientOriginalExtension());
+
+        return preg_match('/^[a-z0-9]{1,10}$/', $ekstensi) ? $ekstensi : 'bin';
     }
 
     private static function decodifikasi(UploadedFile $file): ?GdImage

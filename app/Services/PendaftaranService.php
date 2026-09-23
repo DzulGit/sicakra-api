@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Enums\JenisPermohonanEnum;
 use App\Models\Pelanggan;
 use App\Models\PermohonanLayanan;
-use App\Support\KompresiGambar;
+use App\Services\KtpStorageService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -58,6 +58,6 @@ class PendaftaranService
 
     private function simpanFoto(UploadedFile $file, string $folder): string
     {
-        return KompresiGambar::simpanKeWebp($file, $folder, enkripsi: true);
+        return KtpStorageService::simpan($file);
     }
 }
