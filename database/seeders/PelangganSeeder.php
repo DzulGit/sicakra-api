@@ -178,15 +178,16 @@ class PelangganSeeder extends Seeder
         $this->buatLayanan($this->pelanggan['hendra'], $bronze, Carbon::today()->subDays(3));
     }
 
-    private function buatPelanggan(string $nama, string $username, string $nomorHp, string $nik, ?Admin $reseller = null): Pelanggan
+    private function buatPelanggan(string $nama, string $slug, string $nomorHp, string $nik, ?Admin $reseller = null): Pelanggan
     {
         return Pelanggan::create([
-            'nomor_pelanggan' => $this->generator->generate(Pelanggan::class, 'nomor_pelanggan', 'PLG', true),
-            'username' => $username,
+            // slug dipakai sebagai nomor_pelanggan supaya DemoSeeder &
+            // FinanceScenarioSeeder bisa mencari berdasarkan identitas yang sama.
+            'nomor_pelanggan' => $slug,
             'nama_lengkap' => $nama,
             'nik' => $nik,
             'nomor_hp' => $nomorHp,
-            'email' => $username.'@sicakra-demo.com',
+            'email' => $slug.'@sicakra-demo.com',
             'password' => 'password123',
             'password_sudah_dibuat' => true,
             'tanggal_tagihan' => 20,

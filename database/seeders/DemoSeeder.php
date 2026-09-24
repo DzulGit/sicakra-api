@@ -257,9 +257,9 @@ class DemoSeeder extends Seeder
         return [$tanggal->month, $tanggal->year];
     }
 
-    private function pelanggan(string $username): Pelanggan
+    private function pelanggan(string $slug): Pelanggan
     {
-        return Pelanggan::where('username', $username)->firstOrFail();
+        return Pelanggan::where('nomor_pelanggan', $slug)->firstOrFail();
     }
 
     private function layanan(Pelanggan $pelanggan, int $urutan = 0): LayananInternet
@@ -267,7 +267,7 @@ class DemoSeeder extends Seeder
         $layanan = $pelanggan->layananInternet()->orderBy('id')->get()[$urutan] ?? null;
 
         if (! $layanan) {
-            throw new RuntimeException("Layanan urutan {$urutan} untuk {$pelanggan->username} tidak ditemukan.");
+            throw new RuntimeException("Layanan urutan {$urutan} untuk {$pelanggan->nomor_pelanggan} tidak ditemukan.");
         }
 
         return $layanan;

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Pelanggan;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pelanggan\UbahPasswordRequest;
 use App\Http\Requests\Pelanggan\UbahProfilRequest;
-use App\Http\Requests\Pelanggan\UbahUsernameRequest;
 use App\Support\KompresiGambar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,14 +21,6 @@ class ProfilController extends Controller
     {
         $pelanggan = $request->user();
         $pelanggan->update($request->validated());
-
-        return response()->json(['data' => $pelanggan->fresh()]);
-    }
-
-    public function ubahUsername(UbahUsernameRequest $request)
-    {
-        $pelanggan = $request->user();
-        $pelanggan->update(['username' => $request->validated('username')]);
 
         return response()->json(['data' => $pelanggan->fresh()]);
     }

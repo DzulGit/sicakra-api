@@ -114,7 +114,7 @@ Route::prefix('admin')->group(function () {
             // Preview foto KTP — hak akses sama dengan detail pelanggan (path
             // berasal dari record pelanggan, bukan dari input request).
             Route::get('pelanggan/{pelanggan}/foto-ktp', [FotoKtpController::class, 'tampilkan']);
-            Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetUsernamePassword']);
+            Route::patch('pelanggan/{pelanggan}/reset-akun', [PelangganController::class, 'resetPassword']);
             Route::patch('pelanggan/{pelanggan}/tanggal-tagihan', [PelangganController::class, 'aturTanggalTagihan']);
             Route::patch('layanan/{layanan}/siklus-penagihan', [PelangganController::class, 'aturSiklusLayanan']);
 
@@ -262,7 +262,6 @@ Route::prefix('pelanggan')->group(function () {
 
         Route::get('profil', [ProfilController::class, 'show']);
         Route::patch('profil', [ProfilController::class, 'update']);
-        Route::patch('profil/username', [ProfilController::class, 'ubahUsername']);
         Route::patch('profil/password', [ProfilController::class, 'ubahPassword']);
         Route::post('profil/foto', [ProfilController::class, 'ubahFoto']);
 

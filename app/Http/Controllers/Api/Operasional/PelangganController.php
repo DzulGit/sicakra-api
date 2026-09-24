@@ -43,7 +43,7 @@ class PelangganController extends Controller
      * Admin Operasional mendaftarkan pelanggan baru (pendaftaran offline/telepon).
      * Hanya mendaftarkan — membuat baris pelanggan + permohonan pemasangan_baru
      * (status MENUNGGU_VERIFIKASI), TANPA membuat akun (nomor_pelanggan/
-     * username/password). Akun diaktifkan belakangan saat permohonan dikonversi
+     * password). Akun diaktifkan belakangan saat permohonan dikonversi
      * menjadi layanan aktif (KonversiPermohonanService).
      */
     public function buatBaru(BuatPelangganRequest $request)
@@ -139,14 +139,14 @@ class PelangganController extends Controller
     }
 
     /**
-     * Reset username & password pelanggan oleh Admin Operasional (antisipasi
-     * pelanggan lupa kedua-duanya). Username dan password di-set SAMA, nilainya
-     * 6 karakter acak: huruf kecil/besar + angka, tanpa karakter ambigu
-     * (i I l L o O 0 1) biar aman diketik ulang.
-     * Username & password baru dikembalikan sekali ini saja, lalu diserahkan
-     * ke pelanggan.
+     * Reset password pelanggan oleh Admin Operasional (antisipasi pelanggan
+     * lupa password). Password baru berupa 6 karakter acak: huruf
+     * kecil/besar + angka, tanpa karakter ambigu (i I l L o O 0 1) biar aman
+     * diketik ulang. Password baru dikembalikan sekali ini saja, lalu
+     * diserahkan ke pelanggan. Identitas login tetap nomor_pelanggan — hanya
+     * password yang di-reset.
      */
-    public function resetUsernamePassword(Pelanggan $pelanggan)
+    public function resetPassword(Pelanggan $pelanggan)
     {
         $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
         $nilai = '';
@@ -156,14 +156,16 @@ class PelangganController extends Controller
         }
 
         $pelanggan->update([
-            'username' => $nilai,
             'password' => $nilai, // auto-hash via cast 'hashed'
             'password_sudah_dibuat' => true,
         ]);
 
         return response()->json([
-            'message' => 'Username & password pelanggan berhasil di-reset.',
-            'data' => ['username' => $nilai, 'password' => $nilai],
+            'message' => 'Password pelanggan berhasil di-reset.',
+            'data' => [
+                'nomor_pelanggan' => $pelanggan->nomor_pelanggan,
+                'password' => $nilai,
+            ],
         ]);
     }
 

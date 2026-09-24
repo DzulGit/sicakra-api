@@ -30,7 +30,6 @@ class PelangganFactory extends Factory
 
             return [
                 'nomor_pelanggan' => $nomor,
-                'username' => $nomor,
                 'password' => 'password123',
                 'password_sudah_dibuat' => true,
             ];

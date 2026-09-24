@@ -214,7 +214,6 @@ class ResellerPortalController extends Controller
                 // Akun langsung dibuat karena pelanggan reseller
                 // tidak melewati proses aktivasi teknisi.
                 'nomor_pelanggan' => $nomorPelanggan,
-                'username' => $nomorPelanggan,
                 'password' => $nomorPelanggan,
                 // Password default TIDAK ditandai sudah dibuat supaya
                 // pelanggan reseller diwajibkan membuat password sendiri

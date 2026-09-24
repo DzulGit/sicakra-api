@@ -79,9 +79,9 @@ class FinanceScenarioSeeder extends Seeder
         $resellerNet = $this->paket('Reseller Nusantara 30 Mbps');
 
         // Dataset besar hanya dibuat sekali (guard global). Skenario baru
-        // (seedStatusBerjalan, seedDraftReseller) idempotent per username
+        // (seedStatusBerjalan, seedDraftReseller) idempotent per nomor pelanggan
         // sehingga bisa dijalankan ulang tanpa wipe database.
-        $sudahAda = Pelanggan::where('username', 'andri-prasetyo')->exists();
+        $sudahAda = Pelanggan::where('nomor_pelanggan', 'andri-prasetyo')->exists();
 
         if (! $sudahAda) {
             $this->command->info('Skenario keuangan referensi (non-reseller & reseller utama)');
@@ -573,7 +573,7 @@ class FinanceScenarioSeeder extends Seeder
         $rina = Admin::where('email', 'reseller@sicakra.com')->firstOrFail();
 
         // Admin utama: sedang cicil — tagihan bulan berjalan dibayar 50%.
-        if (! Pelanggan::where('username', 'galih-putra')->exists()) {
+        if (! Pelanggan::where('nomor_pelanggan', 'galih-putra')->exists()) {
             $galih = $this->buatPelanggan('Galih Putra', 'galih-putra');
             $lGalih = $this->buatLayanan($galih, $bronze, $this->waktuBulan(-1, 2));
             $tGalihSebelum = $this->buatTagihan($lGalih, -1);
@@ -583,7 +583,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Admin utama: deposit — bayar lebih 300rb, saldo tersisa.
-        if (! Pelanggan::where('username', 'ratih-purnama')->exists()) {
+        if (! Pelanggan::where('nomor_pelanggan', 'ratih-purnama')->exists()) {
             $ratih = $this->buatPelanggan('Ratih Purnama', 'ratih-purnama');
             $lRatih = $this->buatLayanan($ratih, $silver, $this->waktuBulan(-1, 4));
             $tRatih = $this->buatTagihan($lRatih, 0);
@@ -591,7 +591,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Reseller utama: sedang cicil.
-        if (! Pelanggan::where('username', 'wawan-setiawan')->exists()) {
+        if (! Pelanggan::where('nomor_pelanggan', 'wawan-setiawan')->exists()) {
             $wawan = $this->buatPelanggan('Wawan Setiawan', 'wawan-setiawan', 20, $rina);
             $lWawan = $this->buatLayanan($wawan, $resellerNet, $this->waktuBulan(-1, 5));
             $tWawanSebelum = $this->buatTagihan($lWawan, -1);
@@ -601,7 +601,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Reseller utama: deposit — bayar lebih 250rb, saldo tersisa.
-        if (! Pelanggan::where('username', 'halimah-sadiyah')->exists()) {
+        if (! Pelanggan::where('nomor_pelanggan', 'halimah-sadiyah')->exists()) {
             $halimah = $this->buatPelanggan('Halimah Sadiyah', 'halimah-sadiyah', 20, $rina);
             $lHalimah = $this->buatLayanan($halimah, $resellerNet, $this->waktuBulan(-1, 6));
             $tHalimah = $this->buatTagihan($lHalimah, 0);
@@ -622,8 +622,8 @@ class FinanceScenarioSeeder extends Seeder
         foreach ([
             'rohman-hidayat', 'yusuf-ramli', 'hasyim-asrori', 'farid-maulana',
             'ahmad-zaenuri', 'bambang-sutrisno', 'tuti-herlina', 'salim-ahmad',
-        ] as $username) {
-            $pelanggan = Pelanggan::where('username', $username)->first();
+        ] as $slug) {
+            $pelanggan = Pelanggan::where('nomor_pelanggan', $slug)->first();
             $layanan = $pelanggan?->layananInternet()->first();
             if ($layanan) {
                 $this->buatDraft($layanan, $this->periode(1));
@@ -651,8 +651,8 @@ class FinanceScenarioSeeder extends Seeder
         $i = 0;
         foreach ($daftar as $data) {
             $i++;
-            $username = Str::slug($data['nama']) . '-' . ($reseller ? 'r' . $reseller->id : 'k' . $i);
-            $pelanggan = $this->buatPelanggan($data['nama'], $username, 20, $reseller);
+            $slug = Str::slug($data['nama']) . '-' . ($reseller ? 'r' . $reseller->id : 'k' . $i);
+            $pelanggan = $this->buatPelanggan($data['nama'], $slug, 20, $reseller);
             $layanan = $this->buatLayanan($pelanggan, $data['paket'], $this->waktuBulan(-($data['bulan'] - 1), $i % 9 + 2));
 
             $tagihan = [];
@@ -717,8 +717,8 @@ class FinanceScenarioSeeder extends Seeder
             'intan-permata' => 0,
         ];
 
-        foreach ($tujuan as $username => $urutanLayanan) {
-            $pelanggan = Pelanggan::where('username', $username)->first();
+        foreach ($tujuan as $slug => $urutanLayanan) {
+            $pelanggan = Pelanggan::where('nomor_pelanggan', $slug)->first();
             $layanan = $pelanggan?->layananInternet()->orderBy('id')->get()[$urutanLayanan] ?? null;
             if ($layanan) {
                 $berikut = $this->periode(1);
@@ -741,18 +741,19 @@ class FinanceScenarioSeeder extends Seeder
         return PaketInternet::where('nama_paket', $nama)->firstOrFail();
     }
 
-    private function buatPelanggan(string $nama, string $username, int $tanggalTagihan = 20, ?Admin $reseller = null): Pelanggan
+    private function buatPelanggan(string $nama, string $slug, int $tanggalTagihan = 20, ?Admin $reseller = null): Pelanggan
     {
         $this->nomorHp++;
         $this->nik++;
 
         return Pelanggan::create([
-            'nomor_pelanggan' => $this->generator->generate(Pelanggan::class, 'nomor_pelanggan', 'PLG', true),
-            'username' => $username,
+            // slug dipakai sebagai nomor_pelanggan supaya skenario lain bisa
+            // mencari pelanggan berdasarkan identitas yang stabil.
+            'nomor_pelanggan' => $slug,
             'nama_lengkap' => $nama,
             'nik' => (string) $this->nik,
             'nomor_hp' => '0812'.$this->nomorHp,
-            'email' => $username.'@sicakra-demo.com',
+            'email' => $slug.'@sicakra-demo.com',
             'password' => 'password123',
             'password_sudah_dibuat' => true,
             'tanggal_tagihan' => $tanggalTagihan,
