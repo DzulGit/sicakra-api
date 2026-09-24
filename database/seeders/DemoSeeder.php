@@ -259,7 +259,7 @@ class DemoSeeder extends Seeder
 
     private function pelanggan(string $slug): Pelanggan
     {
-        return Pelanggan::where('nomor_pelanggan', $slug)->firstOrFail();
+        return Pelanggan::where('email', $slug.'@sicakra-demo.com')->firstOrFail();
     }
 
     private function layanan(Pelanggan $pelanggan, int $urutan = 0): LayananInternet
@@ -282,7 +282,7 @@ class DemoSeeder extends Seeder
             throw new RuntimeException("Gagal generate tagihan {$bulan}/{$tahun} untuk layanan #{$layanan->id}.");
         }
 
-        return $tagihan;
+        return $this->terbitkan($tagihan);
     }
 
     private function buatTagihanDraft(LayananInternet $layanan, array $periode): Tagihan
@@ -295,6 +295,22 @@ class DemoSeeder extends Seeder
         }
 
         return $tagihan;
+    }
+
+    /**
+     * Terbitkan tagihan draft (belum_diterbitkan → belum_bayar) seperti aksi
+     * admin/reseller di halaman Terbitkan Tagihan. Tanpa dispatch TagihanDibuat
+     * supaya seeding tidak memanggil Xendit. diterbitkan_pada mengikuti awal
+     * periode tagihan agar konsisten dengan riwayat pembayaran yang di-backdate.
+     */
+    private function terbitkan(Tagihan $tagihan): Tagihan
+    {
+        $tagihan->update([
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'diterbitkan_pada' => Carbon::create($tagihan->periode_tahun, $tagihan->periode_bulan, 1)->startOfDay(),
+        ]);
+
+        return $tagihan->refresh();
     }
 
     private function bayarTunai(Pelanggan $pelanggan, float $jumlah, array $tagihanIds, Carbon $waktu): Pembayaran

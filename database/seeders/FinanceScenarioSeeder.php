@@ -65,7 +65,7 @@ class FinanceScenarioSeeder extends Seeder
         // tidak bentrok pada nomor HP / NIK. NIK kini ter-enkripsi di DB,
         // sehingga agregat SQL tak bisa dipakai — hitung lewat model.
         $this->nomorHp = (int) (Pelanggan::query()
-            ->selectRaw("MAX(CAST(SUBSTRING(nomor_hp FROM 5) AS BIGINT)) AS mx")
+            ->selectRaw('MAX(CAST(SUBSTR(nomor_hp, 5) AS BIGINT)) AS mx')
             ->where('nomor_hp', 'LIKE', '0812%')
             ->value('mx')) ?: 10000000;
         $this->nik = (int) (Pelanggan::all()->map(fn ($p) => (int) $p->nik)->max() ?: 3600000000000000);
@@ -79,9 +79,9 @@ class FinanceScenarioSeeder extends Seeder
         $resellerNet = $this->paket('Reseller Nusantara 30 Mbps');
 
         // Dataset besar hanya dibuat sekali (guard global). Skenario baru
-        // (seedStatusBerjalan, seedDraftReseller) idempotent per nomor pelanggan
+        // (seedStatusBerjalan, seedDraftReseller) idempotent per email
         // sehingga bisa dijalankan ulang tanpa wipe database.
-        $sudahAda = Pelanggan::where('nomor_pelanggan', 'andri-prasetyo')->exists();
+        $sudahAda = Pelanggan::where('email', 'andri-prasetyo@sicakra-demo.com')->exists();
 
         if (! $sudahAda) {
             $this->command->info('Skenario keuangan referensi (non-reseller & reseller utama)');
@@ -573,7 +573,7 @@ class FinanceScenarioSeeder extends Seeder
         $rina = Admin::where('email', 'reseller@sicakra.com')->firstOrFail();
 
         // Admin utama: sedang cicil — tagihan bulan berjalan dibayar 50%.
-        if (! Pelanggan::where('nomor_pelanggan', 'galih-putra')->exists()) {
+        if (! Pelanggan::where('email', 'galih-putra@sicakra-demo.com')->exists()) {
             $galih = $this->buatPelanggan('Galih Putra', 'galih-putra');
             $lGalih = $this->buatLayanan($galih, $bronze, $this->waktuBulan(-1, 2));
             $tGalihSebelum = $this->buatTagihan($lGalih, -1);
@@ -583,7 +583,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Admin utama: deposit — bayar lebih 300rb, saldo tersisa.
-        if (! Pelanggan::where('nomor_pelanggan', 'ratih-purnama')->exists()) {
+        if (! Pelanggan::where('email', 'ratih-purnama@sicakra-demo.com')->exists()) {
             $ratih = $this->buatPelanggan('Ratih Purnama', 'ratih-purnama');
             $lRatih = $this->buatLayanan($ratih, $silver, $this->waktuBulan(-1, 4));
             $tRatih = $this->buatTagihan($lRatih, 0);
@@ -591,7 +591,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Reseller utama: sedang cicil.
-        if (! Pelanggan::where('nomor_pelanggan', 'wawan-setiawan')->exists()) {
+        if (! Pelanggan::where('email', 'wawan-setiawan@sicakra-demo.com')->exists()) {
             $wawan = $this->buatPelanggan('Wawan Setiawan', 'wawan-setiawan', 20, $rina);
             $lWawan = $this->buatLayanan($wawan, $resellerNet, $this->waktuBulan(-1, 5));
             $tWawanSebelum = $this->buatTagihan($lWawan, -1);
@@ -601,7 +601,7 @@ class FinanceScenarioSeeder extends Seeder
         }
 
         // Reseller utama: deposit — bayar lebih 250rb, saldo tersisa.
-        if (! Pelanggan::where('nomor_pelanggan', 'halimah-sadiyah')->exists()) {
+        if (! Pelanggan::where('email', 'halimah-sadiyah@sicakra-demo.com')->exists()) {
             $halimah = $this->buatPelanggan('Halimah Sadiyah', 'halimah-sadiyah', 20, $rina);
             $lHalimah = $this->buatLayanan($halimah, $resellerNet, $this->waktuBulan(-1, 6));
             $tHalimah = $this->buatTagihan($lHalimah, 0);
@@ -623,7 +623,7 @@ class FinanceScenarioSeeder extends Seeder
             'rohman-hidayat', 'yusuf-ramli', 'hasyim-asrori', 'farid-maulana',
             'ahmad-zaenuri', 'bambang-sutrisno', 'tuti-herlina', 'salim-ahmad',
         ] as $slug) {
-            $pelanggan = Pelanggan::where('nomor_pelanggan', $slug)->first();
+            $pelanggan = Pelanggan::where('email', $slug.'@sicakra-demo.com')->first();
             $layanan = $pelanggan?->layananInternet()->first();
             if ($layanan) {
                 $this->buatDraft($layanan, $this->periode(1));
@@ -718,7 +718,7 @@ class FinanceScenarioSeeder extends Seeder
         ];
 
         foreach ($tujuan as $slug => $urutanLayanan) {
-            $pelanggan = Pelanggan::where('nomor_pelanggan', $slug)->first();
+            $pelanggan = Pelanggan::where('email', $slug.'@sicakra-demo.com')->first();
             $layanan = $pelanggan?->layananInternet()->orderBy('id')->get()[$urutanLayanan] ?? null;
             if ($layanan) {
                 $berikut = $this->periode(1);
@@ -747,9 +747,9 @@ class FinanceScenarioSeeder extends Seeder
         $this->nik++;
 
         return Pelanggan::create([
-            // slug dipakai sebagai nomor_pelanggan supaya skenario lain bisa
-            // mencari pelanggan berdasarkan identitas yang stabil.
-            'nomor_pelanggan' => $slug,
+            // nomor_pelanggan memakai format resmi aplikasi (PLG...). Identitas
+            // stabil untuk lookup antar-seeder memakai email (slug@sicakra-demo.com).
+            'nomor_pelanggan' => $this->generator->generate(Pelanggan::class, 'nomor_pelanggan', 'PLG', true),
             'nama_lengkap' => $nama,
             'nik' => (string) $this->nik,
             'nomor_hp' => '0812'.$this->nomorHp,
@@ -815,7 +815,7 @@ class FinanceScenarioSeeder extends Seeder
             throw new RuntimeException("Gagal generate tagihan {$bulan}/{$tahun} untuk layanan #{$layanan->id}.");
         }
 
-        return $tagihan;
+        return $this->terbitkan($tagihan);
     }
 
     private function buatDraft(LayananInternet $layanan, int|array $offsetBulan): void
@@ -825,6 +825,22 @@ class FinanceScenarioSeeder extends Seeder
             : $this->periode($offsetBulan);
 
         $this->generate->generateDraftUntukLayanan($layanan, $bulan, $tahun);
+    }
+
+    /**
+     * Terbitkan tagihan draft (belum_diterbitkan → belum_bayar) seperti aksi
+     * admin/reseller di halaman Terbitkan Tagihan. Tanpa dispatch TagihanDibuat
+     * supaya seeding tidak memanggil Xendit. diterbitkan_pada mengikuti awal
+     * periode tagihan agar konsisten dengan riwayat pembayaran yang di-backdate.
+     */
+    private function terbitkan(Tagihan $tagihan): Tagihan
+    {
+        $tagihan->update([
+            'status_pembayaran' => StatusPembayaranEnum::BELUM_BAYAR,
+            'diterbitkan_pada' => Carbon::create($tagihan->periode_tahun, $tagihan->periode_bulan, 1)->startOfDay(),
+        ]);
+
+        return $tagihan->refresh();
     }
 
     private function bayarTunai(Pelanggan $pelanggan, float $jumlah, array $tagihanIds, Carbon $waktu, ?string $dibayarOleh = null): Pembayaran

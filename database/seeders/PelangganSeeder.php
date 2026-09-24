@@ -181,9 +181,9 @@ class PelangganSeeder extends Seeder
     private function buatPelanggan(string $nama, string $slug, string $nomorHp, string $nik, ?Admin $reseller = null): Pelanggan
     {
         return Pelanggan::create([
-            // slug dipakai sebagai nomor_pelanggan supaya DemoSeeder &
-            // FinanceScenarioSeeder bisa mencari berdasarkan identitas yang sama.
-            'nomor_pelanggan' => $slug,
+            // nomor_pelanggan memakai format resmi aplikasi (PLG...). Identitas
+            // stabil untuk lookup antar-seeder memakai email (slug@sicakra-demo.com).
+            'nomor_pelanggan' => $this->generator->generate(Pelanggan::class, 'nomor_pelanggan', 'PLG', true),
             'nama_lengkap' => $nama,
             'nik' => $nik,
             'nomor_hp' => $nomorHp,
