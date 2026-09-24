@@ -31,6 +31,9 @@ class DashboardKeuanganController extends Controller
          */
 
         $tertunggak = Tagihan::query()
+            ->whereHas('layananInternet.pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR)
             ->where(function ($query) use ($hariIni) {
                 $query
@@ -60,6 +63,9 @@ class DashboardKeuanganController extends Controller
         }
 
         $jatuhTempoMingguIni = Tagihan::query()
+            ->whereHas('layananInternet.pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status_pembayaran', StatusPembayaranEnum::BELUM_BAYAR)
             ->where(function ($query) use ($periodeJatuhTempoMingguIni) {
                 foreach ($periodeJatuhTempoMingguIni as $periode) {
@@ -72,10 +78,16 @@ class DashboardKeuanganController extends Controller
             });
 
         $pembayaranHariIni = Pembayaran::query()
+            ->whereHas('pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status', StatusTransaksiEnum::BERHASIL)
             ->whereDate('dibayar_pada', $hariIni);
 
         $pendapatanBulanIni = Pembayaran::query()
+            ->whereHas('pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status', StatusTransaksiEnum::BERHASIL)
             ->whereMonth('dibayar_pada', now()->month)
             ->whereYear('dibayar_pada', now()->year)
@@ -124,6 +136,9 @@ class DashboardKeuanganController extends Controller
         ];
 
         $pendapatanPerBulan = Pembayaran::query()
+            ->whereHas('pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status', StatusTransaksiEnum::BERHASIL)
             ->where(
                 'dibayar_pada',
@@ -164,6 +179,9 @@ class DashboardKeuanganController extends Controller
         ];
 
         $distribusiPembayaran = Tagihan::query()
+            ->whereHas('layananInternet.pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->whereIn('status_pembayaran', [
                 StatusPembayaranEnum::BELUM_BAYAR,
                 StatusPembayaranEnum::SUDAH_BAYAR,
@@ -185,6 +203,9 @@ class DashboardKeuanganController extends Controller
          * satu pembayaran bisa mengalokasikan ke banyak tagihan.
          */
         $pembayaranTerbaru = Pembayaran::query()
+            ->whereHas('pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->where('status', StatusTransaksiEnum::BERHASIL)
             ->with([
                 'pelanggan',

@@ -16,12 +16,13 @@ class TerbitkanTagihanDraftIndexTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function buatDraft(string $nama, string $nik, string $nomorPelanggan): Tagihan
+    private function buatDraft(string $nama, string $nik, string $nomorPelanggan, ?int $resellerId = null): Tagihan
     {
         $pelanggan = Pelanggan::factory()->create([
             'nama_lengkap' => $nama,
             'nik' => $nik,
             'nomor_pelanggan' => $nomorPelanggan,
+            'reseller_id' => $resellerId,
         ]);
 
         $layanan = LayananInternet::factory()->create([
@@ -91,5 +92,23 @@ class TerbitkanTagihanDraftIndexTest extends TestCase
         $this->assertSame(2, $json->json('data.total'));
         $this->assertSame(1, $json->json('data.last_page'));
         $this->assertSame(100000, $json->json('data.per_page'));
+    }
+
+    public function test_draft_pelanggan_reseller_tidak_muncul_di_keuangan(): void
+    {
+        $admin = Admin::factory()->keuangan()->create();
+        Sanctum::actingAs($admin);
+
+        $reseller = Admin::factory()->reseller()->create();
+
+        $perusahaan = $this->buatDraft('Budi Perusahaan', '3201010102', 'PLG-0001');
+        $milikReseller = $this->buatDraft('Citra Reseller', '3201010103', 'PLG-0002', $reseller->id);
+
+        $json = $this->getJson('/api/admin/keuangan/tagihan/draft?per_page=all')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+        $json->assertJsonPath('data.data.0.id', $perusahaan->id);
+
+        $this->assertNotContains($milikReseller->id, collect($json->json('data.data'))->pluck('id'));
     }
 }

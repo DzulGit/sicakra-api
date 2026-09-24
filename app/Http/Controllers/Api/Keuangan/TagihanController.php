@@ -63,6 +63,8 @@ class TagihanController extends Controller
     {
         $this->authorize('view', $tagihan);
 
+        $this->pastikanTagihanPerusahaan($tagihan);
+
         $tagihan = $this->tagihanRepository->find(
             $tagihan->id,
             ['layananInternet.paketInternet', 'layananInternet.pelanggan', 'alokasiPembayaran.pembayaran'],
@@ -101,6 +103,9 @@ class TagihanController extends Controller
         $data = Tagihan::selectRaw('periode_bulan, SUM(total_tagihan) as total_omzet, COUNT(*) as jumlah_tagihan')
             ->where('periode_tahun', $tahun)
             ->where('status_pembayaran', StatusPembayaranEnum::SUDAH_BAYAR)
+            ->whereHas('layananInternet.pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->groupBy('periode_bulan')
             ->orderBy('periode_bulan')
             ->get();
@@ -115,6 +120,7 @@ class TagihanController extends Controller
         $perPage = $request->integer('per_page', 10);
 
         $pelanggan = Pelanggan::query()
+            ->whereNull('reseller_id')
             ->whereHas('layananInternet', function ($query) {
                 $query
                     ->where('status', StatusLayananEnum::AKTIF)
@@ -143,6 +149,8 @@ class TagihanController extends Controller
     public function generateUntukPelanggan(Request $request, Pelanggan $pelanggan)
     {
         $this->authorize('create', Tagihan::class);
+
+        $this->pastikanPelangganPerusahaan($pelanggan);
 
         $validated = $request->validate([
             'periode_bulan' => 'required|integer|min:1|max:12',
@@ -211,6 +219,8 @@ class TagihanController extends Controller
     ) {
         $this->authorize('create', Tagihan::class);
 
+        $this->pastikanPelangganPerusahaan($pelanggan);
+
         $layananAktif = $pelanggan->layananInternet()
             ->where('status', StatusLayananEnum::AKTIF)
             ->get();
@@ -271,6 +281,8 @@ class TagihanController extends Controller
         Pelanggan $pelanggan
     ) {
         $this->authorize('create', Tagihan::class);
+
+        $this->pastikanPelangganPerusahaan($pelanggan);
 
         $validated = $request->validate([
             'layanan_internet_id' => [
@@ -346,6 +358,8 @@ class TagihanController extends Controller
     {
         $this->authorize('regenerate', $tagihan);
 
+        $this->pastikanTagihanPerusahaan($tagihan);
+
         $validated = $request->validate([
             'jumlah_bulan' => 'required|integer|min:1|max:12',
         ]);
@@ -398,6 +412,8 @@ class TagihanController extends Controller
     public function bayarTunai(Request $request, Tagihan $tagihan)
     {
         $this->authorize('view', $tagihan);
+
+        $this->pastikanTagihanPerusahaan($tagihan);
 
         $tagihan->loadMissing('layananInternet.pelanggan');
 
@@ -472,6 +488,8 @@ class TagihanController extends Controller
     public function perbaruiLink(Tagihan $tagihan)
     {
         $this->authorize('create', Tagihan::class);
+
+        $this->pastikanTagihanPerusahaan($tagihan);
 
         $tagihan->loadMissing('layananInternet.pelanggan');
 
@@ -558,6 +576,9 @@ class TagihanController extends Controller
             ->whereHas('layananInternet', function ($q) {
                 $q->where('status', StatusLayananEnum::AKTIF);
             })
+            ->whereHas('layananInternet.pelanggan', function ($q) {
+                $q->whereNull('reseller_id');
+            })
             ->with(['layananInternet.paketInternet', 'layananInternet.pelanggan']);
 
         if ($search !== '') {
@@ -623,6 +644,12 @@ class TagihanController extends Controller
                     continue;
                 }
 
+                if ($tagihan->layananInternet->pelanggan->reseller_id !== null) {
+                    $gagal++;
+                    $pesanGagal[] = "Tagihan #{$tagihanId}: pelanggan milik reseller.";
+                    continue;
+                }
+
                 // Update nominal jika dikirim
                 if (isset($nominals[$tagihanId])) {
                     $tagihan->update([
@@ -656,6 +683,22 @@ class TagihanController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json(['message' => 'Gagal menerbitkan tagihan: ' . $e->getMessage()], 500);
+        }
+    }
+
+    private function pastikanPelangganPerusahaan(Pelanggan $pelanggan): void
+    {
+        if ($pelanggan->reseller_id !== null) {
+            abort(404, 'Pelanggan tidak ditemukan.');
+        }
+    }
+
+    private function pastikanTagihanPerusahaan(Tagihan $tagihan): void
+    {
+        $tagihan->loadMissing('layananInternet.pelanggan');
+
+        if ($tagihan->layananInternet?->pelanggan?->reseller_id !== null) {
+            abort(404, 'Tagihan tidak ditemukan.');
         }
     }
 }

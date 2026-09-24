@@ -67,11 +67,16 @@ class PembayaranController extends Controller
 
     protected function pastikanPelangganDiScope(Pelanggan $pelanggan): void
     {
-        if (!$this->resellerId) {
+        if ($this->resellerId) {
+            if ($pelanggan->reseller_id !== $this->resellerId) {
+                abort(404, 'Pelanggan tidak ditemukan.');
+            }
+
             return;
         }
 
-        if ($pelanggan->reseller_id !== $this->resellerId) {
+        // Admin keuangan hanya boleh mengakses pelanggan milik perusahaan.
+        if ($pelanggan->reseller_id !== null) {
             abort(404, 'Pelanggan tidak ditemukan.');
         }
     }
