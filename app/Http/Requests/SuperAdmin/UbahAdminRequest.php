@@ -17,8 +17,8 @@ class UbahAdminRequest extends FormRequest
         return [
             'nama_lengkap' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', Rule::unique('admin', 'email')->ignore($this->route('admin'))],
-            'password_lama' => ['required_with:password_baru', 'string'],
             'password_baru' => ['nullable', 'string', 'min:8'],
+            'password_superadmin' => ['required', 'string'],
             'status_aktif' => ['sometimes', 'boolean'],
         ];
     }

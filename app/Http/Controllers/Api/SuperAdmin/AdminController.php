@@ -44,12 +44,15 @@ class AdminController extends Controller
     {
         $data = $request->validated();
 
+        if (! Hash::check($data['password_superadmin'], $request->user()->password)) {
+            return response()->json(['message' => 'Password super admin tidak sesuai.', 'errors' => ['password_superadmin' => ['Password super admin tidak sesuai.']]], 422);
+        }
+
         if ($request->filled('password_baru')) {
-            if (! Hash::check($data['password_lama'], $admin->password)) {
-                return response()->json(['message' => 'Password lama tidak sesuai.', 'errors' => ['password_lama' => ['Password lama tidak sesuai.']]], 422);
-            }
             $data['password'] = $data['password_baru'];
         }
+
+        unset($data['password_superadmin']);
 
         $admin = $this->adminRepository->update($admin, $data);
 
