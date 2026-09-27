@@ -88,6 +88,7 @@ Route::prefix('admin')->group(function () {
             Route::delete('paket-internet/{paketInternet}', [OperasionalPaketInternetController::class, 'destroy']);
 
             Route::get('reseller/statistik', [ResellerController::class, 'statistik']);
+            Route::get('reseller/transaksi', [ResellerController::class, 'transaksi']);
             Route::get('reseller/{reseller}/statistik', [ResellerController::class, 'statistikReseller']);
             Route::post('reseller/laporan', [ResellerController::class, 'laporan']);
             Route::post('reseller/laporan/excel', [ResellerController::class, 'laporanExcel']);
