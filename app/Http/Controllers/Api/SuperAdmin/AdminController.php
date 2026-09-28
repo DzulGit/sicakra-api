@@ -6,9 +6,9 @@ use App\Filters\AdminFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\SimpanAdminRequest;
 use App\Http\Requests\SuperAdmin\UbahAdminRequest;
+use App\Http\Requests\SuperAdmin\ValidasiPasswordSuperAdminRequest;
 use App\Models\Admin;
 use App\Repositories\Contracts\AdminRepositoryInterface;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class AdminController extends Controller
@@ -44,8 +44,8 @@ class AdminController extends Controller
     {
         $data = $request->validated();
 
-        if (! Hash::check($data['password_superadmin'], $request->user()->password)) {
-            return response()->json(['message' => 'Password super admin tidak sesuai.', 'errors' => ['password_superadmin' => ['Password super admin tidak sesuai.']]], 422);
+        if (! $this->passwordSuperAdminSesuai($data, $request->user())) {
+            return $this->balasanPasswordTidakSesuai();
         }
 
         if ($request->filled('password_baru')) {
@@ -59,10 +59,14 @@ class AdminController extends Controller
         return response()->json(['data' => $admin]);
     }
 
-    public function nonaktifkan(Request $request, Admin $admin)
+    public function nonaktifkan(ValidasiPasswordSuperAdminRequest $request, Admin $admin)
     {
         if ($admin->id === $request->user()->id) {
             abort(403, 'Tidak bisa menonaktifkan akun sendiri.');
+        }
+
+        if (! $this->passwordSuperAdminSesuai($request->validated(), $request->user())) {
+            return $this->balasanPasswordTidakSesuai();
         }
 
         $admin = $this->adminRepository->update($admin, ['status_aktif' => false]);
@@ -71,5 +75,29 @@ class AdminController extends Controller
         $admin->tokens()->delete();
 
         return response()->json(['data' => $admin, 'message' => 'Admin berhasil dinonaktifkan.']);
+    }
+
+    public function aktifkan(ValidasiPasswordSuperAdminRequest $request, Admin $admin)
+    {
+        if (! $this->passwordSuperAdminSesuai($request->validated(), $request->user())) {
+            return $this->balasanPasswordTidakSesuai();
+        }
+
+        $admin = $this->adminRepository->update($admin, ['status_aktif' => true]);
+
+        return response()->json(['data' => $admin, 'message' => 'Admin berhasil diaktifkan kembali.']);
+    }
+
+    private function passwordSuperAdminSesuai(array $data, Admin $superAdmin): bool
+    {
+        return Hash::check($data['password_superadmin'], $superAdmin->password);
+    }
+
+    private function balasanPasswordTidakSesuai(): object
+    {
+        return response()->json([
+            'message' => 'Password super admin tidak sesuai.',
+            'errors' => ['password_superadmin' => ['Password super admin tidak sesuai.']],
+        ], 422);
     }
 }

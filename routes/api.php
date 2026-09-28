@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\Reseller\ResellerPermohonanLayananController;
 use App\Http\Controllers\Api\Reseller\ResellerPortalController;
 use App\Http\Controllers\Api\Reseller\ResellerProfilController;
 use App\Http\Controllers\Api\SuperAdmin\AdminController;
+use App\Http\Controllers\Api\SuperAdmin\DashboardSuperAdminController;
 use App\Http\Controllers\Api\SuperAdmin\TimTeknisiController;
 use App\Http\Controllers\Api\Teknisi\DashboardTeknisiController;
 use App\Http\Controllers\Api\Teknisi\JadwalKerjaController;
@@ -164,11 +165,13 @@ Route::prefix('admin')->group(function () {
 
         // ----- Super Admin -----
         Route::middleware('peran:super_admin')->prefix('super-admin')->group(function () {
+            Route::get('dashboard', [DashboardSuperAdminController::class, 'index']);
             Route::get('admin', [AdminController::class, 'index']);
             Route::get('admin/{admin}', [AdminController::class, 'show']);
             Route::post('admin', [AdminController::class, 'store']);
             Route::patch('admin/{admin}', [AdminController::class, 'update']);
             Route::patch('admin/{admin}/nonaktifkan', [AdminController::class, 'nonaktifkan']);
+            Route::patch('admin/{admin}/aktifkan', [AdminController::class, 'aktifkan']);
 
         });
     });
