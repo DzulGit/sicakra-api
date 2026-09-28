@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Reseller;
 use App\Enums\StatusLaporanEnum;
 use App\Enums\StatusLayananEnum;
 use App\Enums\StatusPembayaranEnum;
-use App\Enums\StatusTransaksiEnum;
 use App\Enums\TipePaketEnum;
 use App\Filters\PelangganFilter;
 use App\Http\Controllers\Controller;
@@ -14,11 +13,11 @@ use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
-use App\Models\Pembayaran;
 use App\Models\Tagihan;
 use App\Services\GeneratorNomorService;
 use App\Services\KtpStorageService;
 use App\Services\PembayaranAllocationService;
+use App\Services\ResellerPendapatanService;
 use App\Services\SiklusPenagihanService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +28,7 @@ class ResellerPortalController extends Controller
         private readonly GeneratorNomorService $generatorNomor,
         private readonly SiklusPenagihanService $siklusPenagihanService,
         private readonly PembayaranAllocationService $pembayaranAllocationService,
+        private readonly ResellerPendapatanService $pendapatanReseller,
     ) {}
 
     /** Ringkasan dashbor reseller — hanya data pelanggan miliknya. */
@@ -51,12 +51,7 @@ class ResellerPortalController extends Controller
                 $query->where('reseller_id', $reseller->id);
             });
 
-        $pendapatan = Pembayaran::query()
-            ->where('status', StatusTransaksiEnum::BERHASIL)
-            ->whereHas('tagihan.layananInternet.pelanggan', function ($query) use ($reseller) {
-                $query->where('reseller_id', $reseller->id);
-            })
-            ->sum('jumlah_dibayar');
+        $pendapatan = $this->pendapatanReseller->totalPendapatan($reseller->id);
 
         $stats = [
             'total_pelanggan' => $pelangganQuery()->count(),
@@ -85,9 +80,30 @@ class ResellerPortalController extends Controller
             ->take(10)
             ->get();
 
+        $trenPendapatan = $this->pendapatanReseller->trendPendapatan($reseller->id);
+
+        $distribusiPaket = $pelangganQuery()
+            ->whereHas('layananInternet', fn ($q) => $q->where('status', StatusLayananEnum::AKTIF))
+            ->with(['layananInternet.paketInternet'])
+            ->get()
+            ->flatMap(function (Pelanggan $p) {
+                return $p->layananInternet
+                    ->where('status', StatusLayananEnum::AKTIF)
+                    ->map(fn ($l) => $l->paketInternet?->nama_paket ?? $l->nama_paket_custom);
+            })
+            ->filter()
+            ->countBy()
+            ->sortDesc()
+            ->take(6)
+            ->map(fn ($jumlah, $nama) => ['label' => (string) $nama, 'jumlah' => $jumlah])
+            ->values()
+            ->all();
+
         return response()->json([
             'data' => [
                 'stats' => $stats,
+                'trend_pendapatan' => $trenPendapatan,
+                'distribusi_paket' => $distribusiPaket,
                 'pelanggan_terbaru' => $terbaru,
             ],
         ]);

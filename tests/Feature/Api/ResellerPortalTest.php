@@ -4,10 +4,15 @@ namespace Tests\Feature\Api;
 
 use App\Enums\PeranAdminEnum;
 use App\Enums\StatusLayananEnum;
+use App\Enums\StatusPembayaranEnum;
+use App\Enums\StatusTransaksiEnum;
 use App\Models\Admin;
 use App\Models\LayananInternet;
 use App\Models\PaketInternet;
 use App\Models\Pelanggan;
+use App\Models\Pembayaran;
+use App\Models\PembayaranTagihan;
+use App\Models\Tagihan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -89,6 +94,75 @@ class ResellerPortalTest extends TestCase
             ->assertJsonPath('data.stats.total_pelanggan', 1)
             ->assertJsonPath('data.stats.pelanggan_aktif', 1)
             ->assertJsonCount(1, 'data.pelanggan_terbaru');
+    }
+
+    public function test_dashboard_reseller_menyediakan_tren_pendapatan_dan_distribusi_paket(): void
+    {
+        $reseller = Admin::factory()->reseller()->create();
+        $token = $reseller->createToken('test')->plainTextToken;
+
+        $paketA = PaketInternet::factory()->create(['nama_paket' => 'Paket Hemat']);
+        $paketB = PaketInternet::factory()->create(['nama_paket' => 'Paket Cepat']);
+        $pelanggan = Pelanggan::factory()->create(['reseller_id' => $reseller->id]);
+
+        LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'paket_internet_id' => $paketA->id,
+            'status' => 'aktif',
+        ]);
+        LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'paket_internet_id' => $paketB->id,
+            'status' => 'nonaktif',
+        ]);
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/reseller/dashboard')
+            ->assertOk()
+            ->assertJsonCount(12, 'data.trend_pendapatan')
+            ->assertJsonPath('data.distribusi_paket.0.label', 'Paket Hemat')
+            ->assertJsonPath('data.distribusi_paket.0.jumlah', 1);
+    }
+
+    public function test_dashboard_reseller_pendapatan_dan_tren_berasal_dari_alokasi_pembayaran(): void
+    {
+        $reseller = Admin::factory()->reseller()->create();
+        $token = $reseller->createToken('test')->plainTextToken;
+
+        $pelanggan = Pelanggan::factory()->create(['reseller_id' => $reseller->id]);
+        $layanan = LayananInternet::factory()->create([
+            'pelanggan_id' => $pelanggan->id,
+            'paket_internet_id' => PaketInternet::factory()->create()->id,
+            'status' => StatusLayananEnum::AKTIF,
+        ]);
+        $tagihan = Tagihan::factory()->create([
+            'layanan_internet_id' => $layanan->id,
+            'status_pembayaran' => StatusPembayaranEnum::SUDAH_BAYAR,
+            'total_tagihan' => 250000,
+        ]);
+
+        // Pembayaran 300.000 dengan alokasi hanya 250.000 ke tagihan reseller
+        // (kelebihan = kredit, bukan omzet reseller).
+        $pembayaran = Pembayaran::factory()->create([
+            'tagihan_id' => null,
+            'pelanggan_id' => $pelanggan->id,
+            'status' => StatusTransaksiEnum::BERHASIL,
+            'jumlah_dibayar' => 300000,
+            'dibayar_pada' => now(),
+        ]);
+        PembayaranTagihan::create([
+            'pembayaran_id' => $pembayaran->id,
+            'tagihan_id' => $tagihan->id,
+            'jumlah_dialokasikan' => 250000,
+        ]);
+
+        $response = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/reseller/dashboard')
+            ->assertOk()
+            ->assertJsonPath('data.stats.pendapatan', 250000);
+
+        $tren = $response->json('data.trend_pendapatan');
+        $this->assertEquals(250000, array_sum(array_column($tren, 'jumlah')));
     }
 
     public function test_reseller_hanya_melihat_pelanggan_miliknya_dan_detail_milik_orang_404(): void
