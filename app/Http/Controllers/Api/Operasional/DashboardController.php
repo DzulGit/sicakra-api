@@ -74,8 +74,11 @@ class DashboardController extends Controller
                 'jumlah' => (int) $item->jumlah,
             ]);
 
+        // Card "Permohonan Terbaru" di overview operasional hanya butuh 5 baris
+        // terbaru — daftar lengkap ada di menu Permohonan Layanan (tombol
+        // "Lihat Semua"), jadi jangan kirim 20 baris yang tidak pernah dirender.
         $permohonanTerbaru = PermohonanLayanan::with('pelanggan')
-            ->latest()->take(20)->get();
+            ->latest()->take(5)->get();
 
         return response()->json([
             'data' => [

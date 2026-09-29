@@ -31,6 +31,25 @@ enum StatusPermohonanEnum: string
         };
     }
 
+    /**
+     * Urutan tampil daftar Permohonan Layanan — DAFTAR INI, bukan urutan enum.
+     * Operasional butuh melihat antrean kerja yang masih menunggu aksi lebih dulu:
+     * 1. verifikasi  2. jadwal  3. selesai  4. ditolak
+     * Di dalam satu tahap tetap created_at desc (terbaru dulu).
+     */
+    public static function urutanTahap(): array
+    {
+        return [
+            self::MENUNGGU_VERIFIKASI->value,
+            self::PERLU_REVISI->value,
+            self::DITERIMA->value,
+            self::DIJADWALKAN->value,
+            self::DITUNDA->value,
+            self::DIKONVERSI->value,
+            self::DITOLAK->value,
+        ];
+    }
+
     public function label(): string
     {
         return str_replace('_', ' ', ucwords(strtolower($this->value), '_'));

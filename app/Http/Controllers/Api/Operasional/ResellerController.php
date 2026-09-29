@@ -8,6 +8,7 @@ use App\Enums\StatusPembayaranEnum;
 use App\Enums\StatusTransaksiEnum;
 use App\Exports\ResellerLaporanExport;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Operasional\DaftarTransaksiResellerRequest;
 use App\Http\Requests\Operasional\LaporanResellerRequest;
 use App\Http\Requests\Operasional\SimpanResellerRequest;
 use App\Models\Admin;
@@ -21,6 +22,9 @@ use App\Services\KtpStorageService;
 use App\Services\ResellerPendapatanService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -314,6 +318,31 @@ class ResellerController extends Controller
         ]);
     }
 
+    /**
+     * Daftar seluruh transaksi (tagihan terbit + pembayaran) milik reseller,
+     * dengan filter reseller dan periode. Lanjutan dari card "Transaksi
+     * Terbaru" di halaman monitoring reseller.
+     */
+    public function transaksi(DaftarTransaksiResellerRequest $request)
+    {
+        $this->authorize('viewAny', Admin::class);
+
+        $idList = Admin::where('peran', PeranAdminEnum::RESELLER)
+            ->when($request->input('reseller_id'), fn (Builder $q, $id) => $q->where('id', $id))
+            ->pluck('id');
+
+        return response()->json([
+            'data' => $this->paginateTransaksi(
+                $idList,
+                $request->integer('tahun') ?: null,
+                $request->integer('bulan') ?: null,
+                max(1, $request->integer('per_page', 20)),
+                $request->integer('page', 1),
+                $request,
+            ),
+        ]);
+    }
+
     /** Laporan monitoring reseller PDF. */
     public function laporan(LaporanResellerRequest $request)
     {
@@ -415,47 +444,154 @@ class ResellerController extends Controller
     /** Gabungan tagihan dibuat + pembayaran masuk, terurut terbaru. */
     private function transaksiTerbaru(iterable $idList, int $limit = 8): array
     {
-        $tagihan = $this->queryTagihan($idList)
-            ->with('layananInternet.pelanggan.reseller')
-            ->latest('created_at')
-            ->limit($limit)
+        return $this->gabungTransaksi(
+            $this->queryTagihan($idList)
+                ->with('layananInternet.pelanggan.reseller')
+                ->latest('created_at')
+                ->limit($limit)
+                ->get(),
+            $this->queryPembayaran($idList)
+                ->with('pelanggan.reseller', 'alokasiTagihan.tagihan')
+                ->latest('dibayar_pada')
+                ->limit($limit)
+                ->get(),
+            $limit,
+        );
+    }
+
+    /**
+     * Satu baris transaksi untuk tagihan yang baru diterbitkan.
+     */
+    private function barisTagihan(Tagihan $t): array
+    {
+        return [
+            'id' => $t->id,
+            'jenis' => 'tagihan',
+            'nomor' => $t->nomor_tagihan,
+            'reseller' => $t->layananInternet?->pelanggan?->reseller?->nama_lengkap ?? '-',
+            'pelanggan' => $t->layananInternet?->pelanggan?->nama_lengkap ?? '-',
+            'nominal' => (float) $t->total_tagihan,
+            'status' => $this->labelStatus($t->status_pembayaran),
+            'waktu' => $t->created_at?->format('d M Y H:i'),
+        ];
+    }
+
+    /**
+     * Satu baris transaksi untuk pembayaran yang berhasil.
+     */
+    private function barisPembayaran(Pembayaran $p): array
+    {
+        return [
+            'id' => $p->id,
+            'jenis' => 'pembayaran',
+            'nomor' => $p->alokasiTagihan
+                ->pluck('tagihan.nomor_tagihan')
+                ->filter()
+                ->join(', ') ?: '#'.$p->id,
+            'reseller' => $p->pelanggan?->reseller?->nama_lengkap ?? '-',
+            'pelanggan' => $p->pelanggan?->nama_lengkap ?? '-',
+            'nominal' => (float) $p->jumlah_dibayar,
+            'status' => 'Lunas',
+            'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
+        ];
+    }
+
+    /**
+     * Gabung dua sumber transaksi lalu urutkan benar berdasarkan waktu aktual.
+     *
+     * Pengurutan memakai timestamp asli, bukan teks "d M Y H:i" — sorting
+     * berdasarkan string salah urutan begitu tanggal dan bulannya berbeda.
+     */
+    private function gabungTransaksi(Collection $tagihan, Collection $pembayaran, int $limit): array
+    {
+        return $tagihan->map(fn (Tagihan $t) => [
+                'urut' => $t->created_at?->getTimestamp() ?? 0,
+                'baris' => $this->barisTagihan($t),
+            ])
+            ->concat($pembayaran->map(fn (Pembayaran $p) => [
+                'urut' => $p->dibayar_pada?->getTimestamp() ?? 0,
+                'baris' => $this->barisPembayaran($p),
+            ]))
+            ->filter(fn (array $item) => filled($item['baris']['waktu']))
+            ->sortByDesc('urut')
+            ->take($limit)
+            ->pluck('baris')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Daftar transaksi terpaginasi.
+     *
+     * Tagihan dan pembayaran ada di dua tabel berbeda, jadi gabungannya tidak
+     * bisa dipaginasi langsung lewat `paginate()`. Halaman ini disusun dari
+     * indeks ringan (jenis + id + waktu), lalu hanya baris pada halaman itu
+     * yang dimuat lengkap — `total` tetap akurat walau datanya banyak.
+     */
+    private function paginateTransaksi(iterable $idList, ?int $tahun, ?int $bulan, int $perPage, int $page, Request $request): LengthAwarePaginator
+    {
+        $indeks = $this->indeksTransaksi($idList, $tahun, $bulan);
+        $total = $indeks->count();
+        $slice = $indeks->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $barisTagihan = Tagihan::with('layananInternet.pelanggan.reseller')
+            ->whereIn('id', $slice->where('jenis', 'tagihan')->pluck('id'))
             ->get()
+            ->mapWithKeys(fn (Tagihan $t) => [$t->id => $this->barisTagihan($t)]);
+
+        $barisPembayaran = Pembayaran::with('pelanggan.reseller', 'alokasiTagihan.tagihan')
+            ->whereIn('id', $slice->where('jenis', 'pembayaran')->pluck('id'))
+            ->get()
+            ->mapWithKeys(fn (Pembayaran $p) => [$p->id => $this->barisPembayaran($p)]);
+
+        $data = $slice
+            ->map(fn (array $s) => $s['jenis'] === 'tagihan'
+                ? $barisTagihan->get($s['id'])
+                : $barisPembayaran->get($s['id']))
+            ->filter()
+            ->values()
+            ->all();
+
+        return new LengthAwarePaginator($data, $total, $perPage, $page, [
+            'path' => $request->url(),
+            'query' => $request->query(),
+        ]);
+    }
+
+    /** Indeks ringan transaksi: [{jenis, id, urut}] terurut waktu terbaru. */
+    private function indeksTransaksi(iterable $idList, ?int $tahun, ?int $bulan): Collection
+    {
+        $qTagihan = $this->queryTagihan($idList);
+        $qPembayaran = $this->queryPembayaran($idList);
+
+        if ($tahun !== null) {
+            $qTagihan->whereYear('created_at', $tahun);
+            $qPembayaran->whereYear('dibayar_pada', $tahun);
+        }
+
+        if ($bulan !== null) {
+            $qTagihan->whereMonth('created_at', $bulan);
+            $qPembayaran->whereMonth('dibayar_pada', $bulan);
+        }
+
+        $tagihan = $qTagihan->get(['id', 'created_at'])
             ->map(fn (Tagihan $t) => [
-                'id' => $t->id,
                 'jenis' => 'tagihan',
-                'nomor' => $t->nomor_tagihan,
-                'reseller' => $t->layananInternet?->pelanggan?->reseller?->nama_lengkap ?? '-',
-                'pelanggan' => $t->layananInternet?->pelanggan?->nama_lengkap ?? '-',
-                'nominal' => (float) $t->total_tagihan,
-                'status' => $this->labelStatus($t->status_pembayaran),
-                'waktu' => $t->created_at?->format('d M Y H:i'),
+                'id' => $t->id,
+                'urut' => $t->created_at?->getTimestamp() ?? 0,
             ]);
 
-        $pembayaran = $this->queryPembayaran($idList)
-            ->with('pelanggan.reseller', 'alokasiTagihan.tagihan')
-            ->latest('dibayar_pada')
-            ->limit($limit)
-            ->get()
+        $pembayaran = $qPembayaran->whereNotNull('dibayar_pada')->get(['id', 'dibayar_pada'])
             ->map(fn (Pembayaran $p) => [
-                'id' => $p->id,
                 'jenis' => 'pembayaran',
-                'nomor' => $p->alokasiTagihan
-                    ->pluck('tagihan.nomor_tagihan')
-                    ->filter()
-                    ->join(', ') ?: '#'.$p->id,
-                'reseller' => $p->pelanggan?->reseller?->nama_lengkap ?? '-',
-                'pelanggan' => $p->pelanggan?->nama_lengkap ?? '-',
-                'nominal' => (float) $p->jumlah_dibayar,
-                'status' => 'Lunas',
-                'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
+                'id' => $p->id,
+                'urut' => $p->dibayar_pada?->getTimestamp() ?? 0,
             ]);
 
         return $tagihan->concat($pembayaran)
-            ->filter(fn ($t) => filled($t['waktu']))
-            ->sortByDesc('waktu')
-            ->take($limit)
-            ->values()
-            ->all();
+            ->filter(fn (array $item) => $item['urut'] > 0)
+            ->sortByDesc('urut')
+            ->values();
     }
 
     /** Data laporan PDF/Excel: ringkasan per reseller + detail transaksi. */
@@ -509,42 +645,22 @@ class ResellerController extends Controller
     private function transaksiTerbaruKunciLengkap(iterable $idList, int $tahun, ?int $bulan): array
     {
         $limit = 300;
+
         $qTagihan = $this->queryTagihan($idList)->with('layananInternet.pelanggan.reseller')->whereYear('created_at', $tahun);
         $qBayar = $this->queryPembayaran($idList)
             ->with('pelanggan.reseller', 'alokasiTagihan.tagihan')
             ->whereYear('dibayar_pada', $tahun);
+
         if ($bulan !== null) {
             $qTagihan->whereMonth('created_at', $bulan);
             $qBayar->whereMonth('dibayar_pada', $bulan);
         }
 
-        $tagihan = $qTagihan->latest('created_at')->limit($limit)->get()->map(fn (Tagihan $t) => [
-            'jenis' => 'tagihan',
-            'nomor' => $t->nomor_tagihan,
-            'reseller' => $t->layananInternet?->pelanggan?->reseller?->nama_lengkap ?? '-',
-            'pelanggan' => $t->layananInternet?->pelanggan?->nama_lengkap ?? '-',
-            'nominal' => (float) $t->total_tagihan,
-            'status' => $this->labelStatus($t->status_pembayaran),
-            'waktu' => $t->created_at?->format('d M Y H:i'),
-        ]);
-
-        $bayar = $qBayar->latest('dibayar_pada')
-            ->limit($limit)
-            ->get()
-            ->map(fn (Pembayaran $p) => [
-                'jenis' => 'pembayaran',
-                'nomor' => $p->alokasiTagihan
-                    ->pluck('tagihan.nomor_tagihan')
-                    ->filter()
-                    ->join(', ') ?: '#'.$p->id,
-                'reseller' => $p->pelanggan?->reseller?->nama_lengkap ?? '-',
-                'pelanggan' => $p->pelanggan?->nama_lengkap ?? '-',
-                'nominal' => (float) $p->jumlah_dibayar,
-                'status' => 'Lunas',
-                'waktu' => $p->dibayar_pada?->format('d M Y H:i'),
-            ]);
-
-        return $tagihan->concat($bayar)->sortByDesc('waktu')->values()->all();
+        return $this->gabungTransaksi(
+            $qTagihan->latest('created_at')->limit($limit)->get(),
+            $qBayar->latest('dibayar_pada')->limit($limit)->get(),
+            $limit * 2,
+        );
     }
 
     private function labelStatus(StatusPembayaranEnum $status): string
